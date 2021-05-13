@@ -1,1 +1,1 @@
-# semeval-2020-task-7-humor-in-headlines
+# Semeval 2020 - Task 7: Assessing Humor in Edited News Headlines
