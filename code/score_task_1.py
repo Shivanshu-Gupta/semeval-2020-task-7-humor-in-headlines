@@ -15,12 +15,12 @@ import pandas as pd
 import numpy as np
 
 def score_task_1(truth_loc, prediction_loc):
-    truth = pd.read_csv(truth_loc, usecols=['id','meanGrade'])
-    pred = pd.read_csv(prediction_loc, usecols=['id','pred'])
+    truth = pd.read_csv(truth_loc, usecols=['id', 'meanGrade'])
+    pred = pd.read_csv(prediction_loc, usecols=['id', 'pred'])
     
-    assert(sorted(truth.id) == sorted(pred.id)),"ID mismatch between ground truth and prediction!"
+    assert(sorted(truth.id) == sorted(pred.id)), "ID mismatch between ground truth and prediction!"
     
-    data = pd.merge(truth,pred)
+    data = pd.merge(truth, pred)
     rmse = np.sqrt(np.mean((data['meanGrade'] - data['pred'])**2))
     
     print("RMSE = %.3f" % rmse)

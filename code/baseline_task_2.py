@@ -21,7 +21,8 @@ def baseline_task_2(train_loc, test_loc):
     train = pd.read_csv(train_loc)    
     test = pd.read_csv(test_loc)
 
-    pred = np.argmax(train['label'].value_counts())
+    # pred = np.argmax(train['label'].value_counts())
+    pred = train['label'].mode().iloc[0]
     test['pred'] = pred
     
     output = test[['id','pred']]    
