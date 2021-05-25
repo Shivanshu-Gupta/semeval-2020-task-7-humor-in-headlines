@@ -1,0 +1,8 @@
+{
+    "data_dir": "../inputs/data",
+    "embeddings_dir": "../inputs/embeddings",
+    "log_dir": "../outputs/logs",
+    "models_dir": "../outputs/models",
+    "ray_dir": "../outputs/ray_results"
+}
+

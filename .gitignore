@@ -242,3 +242,22 @@ fabric.properties
 
 .idea/misc.xml
 .idea/deployment.xml
+
+# ---------------------------------------------------------------------------- #
+#                                    VS Code                                   #
+# ---------------------------------------------------------------------------- #
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.code-workspace
+
+# Local History for Visual Studio Code
+.history/
+
+
+# ---------------------------------------------------------------------------- #
+#                                   This Repo                                  #
+# ---------------------------------------------------------------------------- #
+outputs/

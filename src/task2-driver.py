@@ -1,5 +1,6 @@
 import re
 import comet_ml
+from sklearn import metrics
 import torch
 import datasets
 import transformers
@@ -10,14 +11,13 @@ from sklearn.metrics import accuracy_score, precision_recall_fscore_support
 from tqdm import tqdm
 comet_ml.init(project_name='humor-2')
 
-# experiment = Experiment(project_name="basic humor classification")
+experiment = Experiment(project_name="basic humor classification")
 
 # ds1 = load_dataset("humicroedit", "subtask-1")
 ds: datasets.DatasetDict = load_dataset("humicroedit", "subtask-2")
 label_names = ds['train'].features['label'].names
 model = AutoModelForSequenceClassification.from_pretrained('bert-base-cased', num_labels=3)
 tokenizer = AutoTokenizer.from_pretrained('bert-base-cased')
-
 
 def make_headlines_with_mod(ex):
     def make_headline(s, e):
