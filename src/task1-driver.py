@@ -118,7 +118,7 @@ model = RegressionModel(bert_model).to(device)
 # The commented code works
 # train_dl = DataLoader(torch_ds['train'], batch_size=32)
 
-# sample = next(iter(dataloader)) 
+# sample = next(iter(train_dl)) 
 # for key in sample:
 #     sample[key] = sample[key].to(device)
 
