@@ -1,18 +1,20 @@
-import re
-import comet_ml
-from sklearn import metrics
-import torch
-from torch import nn
-import datasets
-import transformers
-import pandas as pd
-from datasets import load_dataset, ClassLabel
-from transformers import AutoModel, AutoTokenizer, Trainer, TrainingArguments
-from sklearn.metrics import accuracy_score, precision_recall_fscore_support
-from tqdm import tqdm
 import os
 
-comet_ml.init(project_name='humor-1')
+os.environ['CUDA_VISIBLE_DEVICES'] = '3'
+os.environ['COMET_PROJECT_NAME'] = 'humor-1'
+os.environ['COMET_MODE'] = 'ONLINE'
+
+import comet_ml
+import re
+import torch
+from torch import nn
+import torch.nn.functional as F
+import datasets
+import transformers
+from datasets import load_dataset, ClassLabel
+from transformers import AutoModel, AutoTokenizer, Trainer, TrainingArguments
+from tqdm import tqdm
+
 
 ds: datasets.DatasetDict = load_dataset("humicroedit", "subtask-1")
 bert_model = AutoModel.from_pretrained('bert-base-cased')
@@ -37,8 +39,19 @@ def make_headlines(sample):
         'edited_sentence': edited,
         'original_word': original_word, 
         'edited_word': edit, 
-        'grade': sample['meanGrade']
+        'grade': [sample['meanGrade']]
     }
+
+
+def add_word_embeddings(sample):
+    words = [sample['original_word'], sample['edited_word']]
+    word_embs = glove.get_vecs_by_tokens(words, lower_case_backup=True)
+    original_word_emb, edited_word_emb = word_embs    
+    return {
+        'original_word_emb': original_word_emb.numpy(),
+        'edited_word_emb': edited_word_emb.numpy()
+    }
+
 
 def encode(examples):
     return tokenizer(
@@ -55,82 +68,68 @@ torch_ds = encoded_ds.copy()
 for split in torch_ds:
     torch_ds[split].set_format(type='torch', columns=['input_ids', 'token_type_ids', 'attention_mask', 'grade'])
 
-use_gpu = True
-gpu_idx = 1
-device = f'cuda:{gpu_idx}' if torch.cuda.is_available() and use_gpu else 'cpu'
+# use_gpu = True
+# gpu_idx = 1
+# device = f'cuda:{gpu_idx}' if torch.cuda.is_available() and use_gpu else 'cpu'
 
 EPOCHS = 5
 WEIGHT_DECAY = 0.99
 
 class RegressionModel(nn.Module):
-    def __init__(self, bert_model):
+    def __init__(self, sentence_embedder):
         super(RegressionModel, self).__init__()
         
-        self.bert = bert_model.eval()
+        self.sentence_embedder = sentence_embedder.eval()
 
         self.l1 = nn.Linear(768, 256)
-        self.l2 = nn.Linear(256, 1)
+        self.l2 = nn.Linear(256, 256)
+        self.lout = nn.Linear(256, 1)
 
     def forward(self, input_ids, attention_mask, token_type_ids):
         with torch.no_grad():
-            bert_out = bert_model(
+            sentence_emb = self.sentence_embedder(
                 input_ids=input_ids, 
                 attention_mask=attention_mask, 
                 token_type_ids=token_type_ids
             ).pooler_output
             
-        x = torch.tanh(self.l1(bert_out))
-        x = self.l2(x)
+        x = F.relu(self.l1(sentence_emb))
+        x = F.relu(self.l2(x))
+        x = self.lout(x)
         return x
 
-# def get_example(index):
-#     return ds['validation'][index]['combined']
 
+# def compute_metrics(EvalPrediction):
+#     grades = torch.from_numpy(EvalPrediction.label_ids)
+#     preds = torch.from_numpy(EvalPrediction.predictions)
+#     rmse = torch.sqrt(F.mse_loss(preds, grades))
 
-# def compute_metrics(pred):
-#     experiment = comet_ml.get_global_experiment()
+#     return { 'rmse': rmse }
 
-#     labels = pred.label_ids
-#     preds = pred.predictions.argmax(-1)
-#     precision, recall, f1, _ = precision_recall_fscore_support(labels, preds, average='macro')
-#     acc = accuracy_score(labels, preds)
+model = RegressionModel(bert_model)
 
-#     if experiment:
-#         epoch = int(experiment.curr_epoch) if experiment.curr_epoch is not None else 0
-#         experiment.set_epoch(epoch)
-#         experiment.log_confusion_matrix(
-#             y_true=labels,
-#             y_predicted=preds,
-#             file_name=f"confusion-matrix-epoch-{epoch}.json",
-#             labels=label_names,
-#             index_to_example_function=get_example
-#         )
+class RegressionTrainer(Trainer):
+    def __init__(self, *args, **kwargs):
+        super(RegressionTrainer, self).__init__(*args, **kwargs)
 
-#     return {
-#         'accuracy': acc,
-#         'f1': f1,
-#         'precision': precision,
-#         'recall': recall
-#     }
+        self.loss_fn = torch.nn.MSELoss()
+        self.eps = 1e-6
 
-model = RegressionModel(bert_model).to(device)
-
-# The commented code works
-# train_dl = DataLoader(torch_ds['train'], batch_size=32)
-
-# sample = next(iter(train_dl)) 
-# for key in sample:
-#     sample[key] = sample[key].to(device)
-
-# model(sample['input_ids'], sample['attention_mask'], sample['token_type_ids'])
+    def compute_loss(self, model, inputs, return_outputs=False):
+        y = inputs.pop("grade")
+        y_pred = model(**inputs)
+        loss = torch.sqrt(self.loss_fn(y_pred, y) + self.eps)
+        return (loss, y) if return_outputs else loss
 
 training_args = TrainingArguments(
     seed=42,
     output_dir='./results',
+    label_names=["grade"],
     overwrite_output_dir=True,
     num_train_epochs=EPOCHS,
     per_device_train_batch_size=4,
     per_device_eval_batch_size=8,
+    remove_unused_columns=False,
     warmup_steps=500,
     weight_decay=0.9,
     learning_rate=1e-5,
@@ -138,12 +137,12 @@ training_args = TrainingArguments(
     do_train=True,
     do_eval=True
 )
-trainer = Trainer(
+trainer = RegressionTrainer(
     model=model,
     args=training_args,
     train_dataset=torch_ds['train'],
     eval_dataset=torch_ds['validation'],
-    compute_metrics=compute_metrics,
+#     compute_metrics=compute_metrics,
 )
 trainer.train()
 
