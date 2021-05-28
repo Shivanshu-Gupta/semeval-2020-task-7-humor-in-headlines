@@ -1,113 +1,58 @@
-import re
-import comet_ml
-from sklearn import metrics
-import torch
-import datasets
-import transformers
+import os
+# os.environ["COMET_LOGGING_FILE"] = "comet.log"
+# os.environ["COMET_LOGGING_FILE_LEVEL"] = "debug"
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+os.environ['COMET_PROJECT_NAME'] = 'humor-2'
+os.environ['COMET_MODE'] = 'ONLINE'
+
+import argparse
 import pandas as pd
-from datasets import load_dataset, ClassLabel
-from transformers import AutoModelForSequenceClassification, AutoTokenizer, Trainer, TrainingArguments
-from sklearn.metrics import accuracy_score, precision_recall_fscore_support
-from tqdm import tqdm
-comet_ml.init(project_name='humor-2')
+import comet_ml
+from pprint import pprint as print
 
-experiment = Experiment(project_name="basic humor classification")
+import torch
+from datasets.dataset_dict import DatasetDict
+from transformers import AutoModelForSequenceClassification, AutoTokenizer, Trainer, TrainingArguments, EvalPrediction
 
-# ds1 = load_dataset("humicroedit", "subtask-1")
-ds: datasets.DatasetDict = load_dataset("humicroedit", "subtask-2")
-label_names = ds['train'].features['label'].names
-model = AutoModelForSequenceClassification.from_pretrained('bert-base-cased', num_labels=3)
-tokenizer = AutoTokenizer.from_pretrained('bert-base-cased')
+from data import get_task2_dataset
+from metrics import get_compute_metrics_task2
+from params import models_dir, TrainingParams
 
-def make_headlines_with_mod(ex):
-    def make_headline(s, e):
-        p = re.compile(r'<(.*)/>')
-        return p.sub(f'[\\1|{e}]', s)
-    h1 = make_headline(ex['original1'], ex['edit1'])
-    h2 = make_headline(ex['original2'], ex['edit2'])
-    return {'headline1': h1, 'headline2': h2, 'combined': f"{h1} [SEP] {h2}"}
+parser = argparse.ArgumentParser()
+parser.add_argument("-o", "--overwrite", action='store_true')
+parser.add_argument("--silent", action='store_true')
+parser.add_argument("--usecomet", action='store_true')
+parser.add_argument("--transformer", type=str, default='bert-base-cased')
+parser.add_argument("--num_epochs", type=int, default=0)
+args = parser.parse_args()
 
+model = AutoModelForSequenceClassification.from_pretrained(args.transformer, num_labels=2)
+tokenizer = AutoTokenizer.from_pretrained(args.transformer)
+ds: DatasetDict = get_task2_dataset(tokenizer=tokenizer, combined=True)
+for split in ds:
+    print(f'{split}: {ds[split].shape}')
+print(ds['train'].features)
+label_names = ds['train'].features['labels'].names
+compute_metrics = get_compute_metrics_task2(tokenizer=tokenizer, ds=ds, label_names=label_names)
 
-def tokenize(examples):
-    encoded = tokenizer(examples['original1'], examples['original2'])
-    return tokenizer.decode(encoded['input_ids'])
-
-
-def encode(examples):
-    return tokenizer(examples['original1'], examples['original2'], truncation=True, padding='max_length')
-
-
-ds = ds.map(make_headlines_with_mod)
-binary_ds = ds.filter(lambda ex: ex['label'] != 0).\
-    map(lambda ex: {'label': ex['label'] - 1})
-binary_ds_features = ds['train'].features.copy()
-binary_ds_features['label'] = ClassLabel(names=ds['train'].features['label'].names[1:])
-binary_ds = binary_ds.cast(binary_ds_features)
-encoded_ds = binary_ds.map(encode, batched=True).\
-    map(lambda examples: {'labels': examples['label']}, batched=True)
-torch_ds = encoded_ds.copy()
-for split in torch_ds:
-    torch_ds[split].set_format(type='torch', columns=['input_ids', 'token_type_ids', 'attention_mask', 'labels'])
-
-use_gpu = True
-gpu_idx = 1
-device = f'cuda:{gpu_idx}' if torch.cuda.is_available() and use_gpu else 'cpu'
-model.train().to(device)
-
-EPOCHS = 5
-WEIGHT_DECAY = 0.99
-
-
-def get_example(index):
-    return ds['validation'][index]['combined']
-
-
-def compute_metrics(pred):
-    experiment = comet_ml.get_global_experiment()
-
-    labels = pred.label_ids
-    preds = pred.predictions.argmax(-1)
-    precision, recall, f1, _ = precision_recall_fscore_support(labels, preds, average='macro')
-    acc = accuracy_score(labels, preds)
-
-    if experiment:
-        epoch = int(experiment.curr_epoch) if experiment.curr_epoch is not None else 0
-        experiment.set_epoch(epoch)
-        experiment.log_confusion_matrix(
-            y_true=labels,
-            y_predicted=preds,
-            file_name=f"confusion-matrix-epoch-{epoch}.json",
-            labels=label_names,
-            index_to_example_function=get_example
-        )
-
-    return {
-        'accuracy': acc,
-        'f1': f1,
-        'precision': precision,
-        'recall': recall
-    }
-
+default_training_args = TrainingParams()
+if args.num_epochs > 0:
+    default_training_args.num_train_epochs = args.num_epochs
 
 training_args = TrainingArguments(
     seed=42,
-    output_dir='./results',
-    overwrite_output_dir=True,
-    num_train_epochs=EPOCHS,
-    per_device_train_batch_size=4,
-    per_device_eval_batch_size=8,
-    warmup_steps=500,
-    weight_decay=0.9,
-    learning_rate=1e-5,
-    evaluation_strategy="epoch",
-    do_train=True,
-    do_eval=True
+    output_dir=os.path.join(models_dir, 'task2/v1'),
+    metric_for_best_model='accuracy',
+    report_to="comet_ml" if args.usecomet else "none",
+    **default_training_args.to_dict()
 )
+
 trainer = Trainer(
     model=model,
     args=training_args,
-    train_dataset=torch_ds['train'],
-    eval_dataset=torch_ds['validation'],
-    compute_metrics=compute_metrics,
+    train_dataset=ds['train'],
+    eval_dataset=ds['validation'],
+    tokenizer=tokenizer,
+    compute_metrics=compute_metrics
 )
 trainer.train()

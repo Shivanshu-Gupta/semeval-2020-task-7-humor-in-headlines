@@ -1,148 +1,66 @@
 import os
 
-os.environ['CUDA_VISIBLE_DEVICES'] = '3'
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
 os.environ['COMET_PROJECT_NAME'] = 'humor-1'
 os.environ['COMET_MODE'] = 'ONLINE'
 
+import argparse
+import pandas as pd
 import comet_ml
-import re
-import torch
-from torch import nn
-import torch.nn.functional as F
-import datasets
-import transformers
-from datasets import load_dataset, ClassLabel
-from transformers import AutoModel, AutoTokenizer, Trainer, TrainingArguments
-from tqdm import tqdm
+import torchtext
+from pprint import pprint as print
+from pdb import set_trace
+from transformers import AutoTokenizer, Trainer, TrainingArguments
 
+from data import get_task1_dataset
+from metrics import compute_metrics_task1 as compute_metrics
+from params import models_dir, TrainingParams
 
-ds: datasets.DatasetDict = load_dataset("humicroedit", "subtask-1")
-bert_model = AutoModel.from_pretrained('bert-base-cased')
-tokenizer = AutoTokenizer.from_pretrained('bert-base-cased')
+parser = argparse.ArgumentParser()
+parser.add_argument("-o", "--overwrite", action='store_true')
+parser.add_argument("--silent", action='store_true')
+parser.add_argument("--usecomet", action='store_true')
+parser.add_argument("--transformer", type=str, default='bert-base-cased')
+parser.add_argument("--model_version", type=str, default='v1')
+parser.add_argument("--num_epochs", type=int, default=0)
+args = parser.parse_args()
 
-def make_headlines(sample):
-    line = sample["original"]
-    edit = sample["edit"]
+tokenizer = AutoTokenizer.from_pretrained(args.transformer)
+glove = None
+if args.model_version in ['v2']:
+    glove = torchtext.vocab.GloVe(name='840B', dim=300)
+ds = get_task1_dataset(tokenizer=tokenizer, glove=glove, hl_w_mod=False)
 
-    opening = line.index("<")
-    closing = line.index("/>", opening)
+for split in ds:
+    print(f'{split}: {ds[split].shape}')
+print(ds['train'].features)
 
-    start = line[:opening]
-    end = line[closing + 2:]
-    original_word = line[opening+1:closing]
+if args.model_version == 'v1':
+    from models import RegressionModelv1
+    model = RegressionModelv1(args.transformer)
+elif args.model_version == 'v2':
+    from models import RegressionModelv2
+    model = RegressionModelv2(transformer=args.transformer, word_emb_dim=glove.dim)
 
-    original = start + original_word + end
-    edited = start + edit + end
-    
-    return {
-        'original_sentence': original,
-        'edited_sentence': edited,
-        'original_word': original_word, 
-        'edited_word': edit, 
-        'grade': [sample['meanGrade']]
-    }
-
-
-def add_word_embeddings(sample):
-    words = [sample['original_word'], sample['edited_word']]
-    word_embs = glove.get_vecs_by_tokens(words, lower_case_backup=True)
-    original_word_emb, edited_word_emb = word_embs    
-    return {
-        'original_word_emb': original_word_emb.numpy(),
-        'edited_word_emb': edited_word_emb.numpy()
-    }
-
-
-def encode(examples):
-    return tokenizer(
-        examples['original_sentence'], 
-        examples['edited_sentence'], 
-        truncation=True, 
-        padding='max_length'
-    )
-
-
-ds = ds.map(make_headlines)
-encoded_ds = ds.map(encode, batched=True)
-torch_ds = encoded_ds.copy()
-for split in torch_ds:
-    torch_ds[split].set_format(type='torch', columns=['input_ids', 'token_type_ids', 'attention_mask', 'grade'])
-
-# use_gpu = True
-# gpu_idx = 1
-# device = f'cuda:{gpu_idx}' if torch.cuda.is_available() and use_gpu else 'cpu'
-
-EPOCHS = 5
-WEIGHT_DECAY = 0.99
-
-class RegressionModel(nn.Module):
-    def __init__(self, sentence_embedder):
-        super(RegressionModel, self).__init__()
-        
-        self.sentence_embedder = sentence_embedder.eval()
-
-        self.l1 = nn.Linear(768, 256)
-        self.l2 = nn.Linear(256, 256)
-        self.lout = nn.Linear(256, 1)
-
-    def forward(self, input_ids, attention_mask, token_type_ids):
-        with torch.no_grad():
-            sentence_emb = self.sentence_embedder(
-                input_ids=input_ids, 
-                attention_mask=attention_mask, 
-                token_type_ids=token_type_ids
-            ).pooler_output
-            
-        x = F.relu(self.l1(sentence_emb))
-        x = F.relu(self.l2(x))
-        x = self.lout(x)
-        return x
-
-
-# def compute_metrics(EvalPrediction):
-#     grades = torch.from_numpy(EvalPrediction.label_ids)
-#     preds = torch.from_numpy(EvalPrediction.predictions)
-#     rmse = torch.sqrt(F.mse_loss(preds, grades))
-
-#     return { 'rmse': rmse }
-
-model = RegressionModel(bert_model)
-
-class RegressionTrainer(Trainer):
-    def __init__(self, *args, **kwargs):
-        super(RegressionTrainer, self).__init__(*args, **kwargs)
-
-        self.loss_fn = torch.nn.MSELoss()
-        self.eps = 1e-6
-
-    def compute_loss(self, model, inputs, return_outputs=False):
-        y = inputs.pop("grade")
-        y_pred = model(**inputs)
-        loss = torch.sqrt(self.loss_fn(y_pred, y) + self.eps)
-        return (loss, y) if return_outputs else loss
+default_training_args = TrainingParams()
+if args.num_epochs > 0:
+    default_training_args.num_train_epochs = args.num_epochs
 
 training_args = TrainingArguments(
-    seed=42,
-    output_dir='./results',
+    output_dir=os.path.join(models_dir, 'task1/v1'),
     label_names=["grade"],
-    overwrite_output_dir=True,
-    num_train_epochs=EPOCHS,
-    per_device_train_batch_size=4,
-    per_device_eval_batch_size=8,
-    remove_unused_columns=False,
-    warmup_steps=500,
-    weight_decay=0.9,
-    learning_rate=1e-5,
-    evaluation_strategy="epoch",
-    do_train=True,
-    do_eval=True
+    metric_for_best_model='rmse',
+    report_to="comet_ml" if args.usecomet else "none",
+    **default_training_args.to_dict()
 )
-trainer = RegressionTrainer(
+
+trainer = Trainer(
     model=model,
     args=training_args,
-    train_dataset=torch_ds['train'],
-    eval_dataset=torch_ds['validation'],
-#     compute_metrics=compute_metrics,
+    train_dataset=ds['train'],
+    eval_dataset=ds['validation'],
+    tokenizer=tokenizer,
+    compute_metrics=compute_metrics,
 )
 trainer.train()
 
