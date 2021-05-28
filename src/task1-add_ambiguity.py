@@ -57,8 +57,8 @@ def add_word_embeddings(sample):
 
 def add_amb_embeddings(sample):
     global max_len
-    orig_amb = [len(wordnet.synsets(w)) for w in sample['original_sentence']]
-    edit_amb = [len(wordnet.synsets(w)) for w in sample['edited_sentence']]
+    orig_amb = [len(wordnet.synsets(w)) for w in sample['original_sentence'].split(' ')]
+    edit_amb = [len(wordnet.synsets(w)) for w in sample['edited_sentence'].split(' ')]
     if len(orig_amb) > max_len:
         max_len = len(orig_amb)
     if len(edit_amb) > max_len:
@@ -109,14 +109,15 @@ class RegressionModel(nn.Module):
         
         self.sentence_embedder = sentence_embedder.eval()
         self.word_embedder = word_embedder
+        global max_len
         
-        num_features = sentence_embedder.pooler.dense.out_features + 2 * word_embedder.dim
-
+        num_features = sentence_embedder.pooler.dense.out_features + 2 * word_embedder.dim + 4 * max_len
         self.l1 = nn.Linear(num_features, 256)
         self.l2 = nn.Linear(256, 256)
         self.lout = nn.Linear(256, 1)
 
-    def forward(self, input_ids, attention_mask, token_type_ids, original_word_emb, edited_word_emb, **kwargs):
+    def forward(self, input_ids, attention_mask, token_type_ids, original_word_emb, edited_word_emb,
+            orig_amb_pad, orig_amb_mask, edit_amb_pad, edit_amb_mask, **kwargs):
         with torch.no_grad():
             sentence_emb = self.sentence_embedder(
                 input_ids=input_ids, 
@@ -124,8 +125,8 @@ class RegressionModel(nn.Module):
                 token_type_ids=token_type_ids
             ).pooler_output
             
-        features = torch.cat((original_word_emb, sentence_emb, edited_word_emb), 1)
-            
+        features = torch.cat((original_word_emb, sentence_emb, edited_word_emb,
+            orig_amb_pad, orig_amb_mask, edit_amb_pad, edit_amb_mask), 1)
         x = F.relu(self.l1(features))
         x = F.relu(self.l2(x))
         x = self.lout(x)
