@@ -16,7 +16,7 @@ from transformers import AutoTokenizer, Trainer, TrainingArguments
 
 from data import get_task1_dataset
 from models import RegressionModel
-from metrics import compute_metrics_task1 as compute_metrics
+from metrics import get_compute_metrics_task1
 from params import models_dir, TrainingParams
 
 parser = argparse.ArgumentParser()
@@ -28,6 +28,8 @@ parser.add_argument("--add_word_embs", action='store_true')
 parser.add_argument("--add_amb_embs", action='store_true')
 parser.add_argument("--num_epochs", type=int, default=0)
 args = parser.parse_args()
+
+print(args)
 
 tokenizer = AutoTokenizer.from_pretrained(args.transformer)
 ds = get_task1_dataset(tokenizer=tokenizer,
@@ -45,10 +47,12 @@ amb_emb_dim = ds['train'][0]['amb_emb_ini'].shape[0] if args.add_amb_embs else 0
 model = RegressionModel(transformer=args.transformer,
                         word_emb_dim=word_emb_dim,
                         amb_emb_dim=amb_emb_dim)
-print(model)
+#print(model)
 default_training_args = TrainingParams()
 if args.num_epochs > 0:
     default_training_args.num_train_epochs = args.num_epochs
+
+compute_metrics = get_compute_metrics_task1()
 
 training_args = TrainingArguments(
     output_dir=os.path.join(models_dir, f'task1/{model.name}'),
@@ -64,7 +68,7 @@ trainer = Trainer(
     train_dataset=ds['train'],
     eval_dataset=ds['validation'],
     tokenizer=tokenizer,
-    compute_metrics=compute_metrics,
+    compute_metrics=compute_metrics
 )
 trainer.train()
 

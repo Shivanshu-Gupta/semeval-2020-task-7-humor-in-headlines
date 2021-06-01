@@ -5,7 +5,7 @@ from typing import Union, Optional
 
 from param_impl import default_value, Parameters
 
-paths = json.load(open('paths.json'))
+paths = json.load(open('src/paths.json'))
 data_dir = paths['data_dir']
 embeddings_dir = paths['embeddings_dir']
 log_dir = paths['log_dir']

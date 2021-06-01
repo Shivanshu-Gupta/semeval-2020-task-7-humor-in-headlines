@@ -5,13 +5,15 @@ from pdb import set_trace
 from transformers import EvalPrediction
 from sklearn.metrics import accuracy_score, precision_recall_fscore_support, mean_squared_error
 
-def compute_metrics_task1(pred: EvalPrediction):
-    grades = pred.label_ids
-    preds = pred.predictions
-    # set_trace()
-    # rmse = mean_squared_error(y_true=grades, y_pred=preds, squared=False)
-    rmse = np.sqrt(np.mean((grades - preds)**2))            # taken from code/score_task1.py
-    return {'rmse': rmse}
+def get_compute_metrics_task1():
+    def compute_metrics(pred: EvalPrediction):
+        grades = pred.label_ids
+        preds = pred.predictions 
+        mse = mean_squared_error(y_true=grades, y_pred=preds, squared=False)
+        return {
+            'rmse': mse
+        }
+    return compute_metrics
 
 def get_compute_metrics_task2(tokenizer, ds, label_names):
     def compute_metrics(pred: EvalPrediction):

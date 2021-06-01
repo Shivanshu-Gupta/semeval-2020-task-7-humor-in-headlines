@@ -34,7 +34,7 @@ class RegressionModel(nn.Module):
 
         parts = [sentence_emb]
         if self.add_word_embs:
-            parts.extend(kwargs['word_ini_emb'], kwargs['word_fin_emb'])
+            parts.extend([kwargs['word_ini_emb'], kwargs['word_fin_emb']])
         if self.add_amb_embs:
             parts.extend([kwargs['amb_emb_ini'],
                           kwargs['amb_mask_ini'],
