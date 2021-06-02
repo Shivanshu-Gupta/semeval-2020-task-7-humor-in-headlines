@@ -14,8 +14,8 @@ import torch
 from datasets.dataset_dict import DatasetDict
 from transformers import AutoModelForSequenceClassification, AutoTokenizer, Trainer, TrainingArguments, EvalPrediction
 
-from data import get_task2_dataset
-from metrics import get_compute_metrics_task2
+from task2.data import get_dataset
+from task2.metrics import get_compute_metrics
 from params import models_dir, TrainingParams
 
 parser = argparse.ArgumentParser()
@@ -28,12 +28,12 @@ args = parser.parse_args()
 
 model = AutoModelForSequenceClassification.from_pretrained(args.transformer, num_labels=2)
 tokenizer = AutoTokenizer.from_pretrained(args.transformer)
-ds: DatasetDict = get_task2_dataset(tokenizer=tokenizer, combined=True)
+ds: DatasetDict = get_dataset(tokenizer=tokenizer, combined=True)
 for split in ds:
     print(f'{split}: {ds[split].shape}')
 print(ds['train'].features)
 label_names = ds['train'].features['labels'].names
-compute_metrics = get_compute_metrics_task2(tokenizer=tokenizer, ds=ds, label_names=label_names)
+compute_metrics = get_compute_metrics(tokenizer=tokenizer, ds=ds, label_names=label_names)
 
 default_training_args = TrainingParams()
 if args.num_epochs > 0:

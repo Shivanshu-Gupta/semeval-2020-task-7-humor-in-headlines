@@ -24,8 +24,7 @@ def disambiguate(o, t):
         raise TypeError("Unknown Type")
 
 @attr.s(auto_attribs=True)
-class TrainingParams(Parameters, InstantiationMixin):
-    type: str = 'transformers.TrainingArguments'
+class DefaultTrainingArguments(Parameters):
     seed: int = 42
     overwrite_output_dir: bool = True
     num_train_epochs:int = 5
@@ -40,10 +39,3 @@ class TrainingParams(Parameters, InstantiationMixin):
     do_train: bool = True
     do_eval: bool = True
     load_best_model_at_end: bool = True
-
-class Task1Params(Parameters):
-    transformer: str = 'bert-base-cased'
-    freeze_transformer: bool = False
-    add_word_embs: bool = False
-    add_amb_embs: bool = False
-

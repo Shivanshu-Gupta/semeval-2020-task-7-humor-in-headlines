@@ -1,21 +1,9 @@
 import comet_ml
 import numpy as np
-from pdb import set_trace
-
+from sklearn.metrics import accuracy_score, precision_recall_fscore_support
 from transformers import EvalPrediction
-from sklearn.metrics import accuracy_score, precision_recall_fscore_support, mean_squared_error
 
-def get_compute_metrics_task1():
-    def compute_metrics(pred: EvalPrediction):
-        grades = pred.label_ids
-        preds = pred.predictions 
-        mse = mean_squared_error(y_true=grades, y_pred=preds, squared=False)
-        return {
-            'rmse': mse
-        }
-    return compute_metrics
-
-def get_compute_metrics_task2(tokenizer, ds, label_names):
+def get_compute_metrics(tokenizer, ds, label_names):
     def compute_metrics(pred: EvalPrediction):
         labels = pred.label_ids
         preds = pred.predictions.argmax(-1)
