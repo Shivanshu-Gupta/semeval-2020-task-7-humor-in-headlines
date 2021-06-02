@@ -40,7 +40,6 @@ if args.num_epochs > 0:
     default_training_args.num_train_epochs = args.num_epochs
 
 training_args = TrainingArguments(
-    seed=42,
     output_dir=os.path.join(models_dir, 'task2/v1'),
     metric_for_best_model='accuracy',
     report_to="comet_ml" if args.usecomet else "none",

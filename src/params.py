@@ -3,9 +3,11 @@ import json
 import attr
 from typing import Union, Optional
 
-from param_impl import default_value, Parameters
+from torch.nn.modules import transformer
 
-paths = json.load(open('src/paths.json'))
+from param_impl import InstantiationMixin, default_value, Parameters
+
+paths = json.load(open('paths.json'))
 data_dir = paths['data_dir']
 embeddings_dir = paths['embeddings_dir']
 log_dir = paths['log_dir']
@@ -22,12 +24,13 @@ def disambiguate(o, t):
         raise TypeError("Unknown Type")
 
 @attr.s(auto_attribs=True)
-class TrainingParams(Parameters):
+class TrainingParams(Parameters, InstantiationMixin):
+    type: str = 'transformers.TrainingArguments'
     seed: int = 42
     overwrite_output_dir: bool = True
     num_train_epochs:int = 5
     per_device_train_batch_size:int = 128
-    per_device_eval_batch_size:int = 1024
+    per_device_eval_batch_size:int = 512
     remove_unused_columns: bool = False
     warmup_steps:int = 500
     weight_decay: float = 0.9
@@ -37,3 +40,10 @@ class TrainingParams(Parameters):
     do_train: bool = True
     do_eval: bool = True
     load_best_model_at_end: bool = True
+
+class Task1Params(Parameters):
+    transformer: str = 'bert-base-cased'
+    freeze_transformer: bool = False
+    add_word_embs: bool = False
+    add_amb_embs: bool = False
+

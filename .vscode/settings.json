@@ -1,3 +1,21 @@
 {
-    "jupyter.jupyterServerType": "local"
+    "jupyter.jupyterServerType": "local",
+    "sync-rsync.local": "'${workspaceFolder}'",
+    "sync-rsync.remote": "uci-ava-s0:/home/shivag5/Documents/Academics/courses/spring-2021/cs272-statistical-NLP/project/semeval-2020-task-7-humor-in-headlines/",
+    "sync-rsync.executableShell": "/bin/bash",
+    "sync-rsync.onSave": true,
+    "sync-rsync.showProgress": true,
+    "sync-rsync.exclude":[
+        "*"
+    ],
+
+    "sync-rsync.include": [
+        "src***/",
+        "scripts***/",
+        "*.py",
+        "*.ipynb",
+        "*.sh",
+        "*.json",
+    ],
+    "python.pythonPath": "/Users/shivanshu/miniconda3/envs/dl/bin/python",
 }

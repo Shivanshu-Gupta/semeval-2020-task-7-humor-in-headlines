@@ -24,6 +24,7 @@ parser.add_argument("-o", "--overwrite", action='store_true')
 parser.add_argument("--silent", action='store_true')
 parser.add_argument("--usecomet", action='store_true')
 parser.add_argument("--transformer", type=str, default='bert-base-cased')
+parser.add_argument("--freeze", "--freeze_transformer", action="store_true")
 parser.add_argument("--add_word_embs", action='store_true')
 parser.add_argument("--add_amb_embs", action='store_true')
 parser.add_argument("--num_epochs", type=int, default=0)
@@ -48,21 +49,20 @@ model = RegressionModel(transformer=args.transformer,
                         word_emb_dim=word_emb_dim,
                         amb_emb_dim=amb_emb_dim)
 #print(model)
-default_training_args = TrainingParams()
+training_params = TrainingParams()
 if args.num_epochs > 0:
-    default_training_args.num_train_epochs = args.num_epochs
+    training_params.num_train_epochs = args.num_epochs
 
 compute_metrics = get_compute_metrics_task1()
 
-training_args = TrainingArguments(
+training_args: TrainingArguments = training_params.instantiate(
     output_dir=os.path.join(models_dir, f'task1/{model.name}'),
     label_names=["grade"],
     metric_for_best_model='rmse',
     report_to="comet_ml" if args.usecomet else "none",
-    **default_training_args.to_dict()
 )
 
-trainer = Trainer(
+trainer: Trainer = Trainer(
     model=model,
     args=training_args,
     train_dataset=ds['train'],
@@ -71,4 +71,4 @@ trainer = Trainer(
     compute_metrics=compute_metrics
 )
 trainer.train()
-
+trainer.evaluate()

@@ -154,13 +154,16 @@ def get_task2_dataset(tokenizer, add_word_embs=False, add_amb_embs=False,
     encode_fn = get_encode2(tokenizer, hl_w_mod=hl_w_mod, combined=combined)
     encoded_ds = binary_ds.map(encode_fn, batched=True, batch_size=100)
 
-    encoded_ds_cols = ['input_ids', 'token_type_ids', 'attention_mask']
+    tokenizer_cols = ['input_ids', 'token_type_ids', 'attention_mask']
+    encoded_ds_cols = tokenizer_cols if not combined else []
     if add_word_embs:
         encoded_ds_cols.extend(['word_ini_emb', 'word_fin_emb'])
     if add_amb_embs:
         encoded_ds_cols.extend(['amb_emb_ini', 'amb_mask_ini',
                                 'amb_emb_fin', 'amb_mask_fin'])
     encoded_ds_cols = [f'{col}{i+1}' for i in range(2) for col in encoded_ds_cols]
+    if combined:
+        encoded_ds_cols.extend(tokenizer_cols)
 
     for _ds in encoded_ds.values():
         _ds.set_format(type='torch', columns=encoded_ds_cols + ['labels'],
