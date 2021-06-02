@@ -1,11 +1,10 @@
 import os
-from dataclasses import dataclass
-from typing import Tuple
+from dataclasses import dataclass, asdict
 from transformers import TrainingArguments
 
 from ray import tune
 
-from params import DefaultTrainingArguments, models_dir
+from params import DefaultTrainingArguments, outputs_dir
 
 @dataclass
 class Task1Arguments(TrainingArguments):
@@ -50,20 +49,28 @@ def get_args(cmd_args, search=False, **kwargs):
         ))
     args_dict.update(**kwargs)
     args = Task1Arguments(**args_dict)
-    args.output_dir = os.path.join(models_dir, f'task1/{get_model_name(args)}')
+    args.output_dir = os.path.join(outputs_dir, f'models/task1/{get_model_name(args)}')
     return args
 
 def get_choice_fn(hyperopt=False):
-    if hyperopt: tune.choice
+    if hyperopt: return tune.choice
     else: return tune.grid_search
 
-def hp_space_1(hyperopt=False):
-    choices = get_choice_fn(hyperopt=hyperopt)
-    hp_space = dict(
-        transformer = choices(['bert-base-cased']),
-        freeze_transformer = choices([True, False]),
-        add_word_embs = choices([True, False]),
-        add_amb_embs = choices([True, False])
-    )
-    is_grid = not hyperopt
+def get_hp_space(cmd_args):
+    choices = get_choice_fn(hyperopt=cmd_args.usehyperopt)
+    args = get_args(cmd_args=cmd_args, search=True, skip_memory_metrics=True)
+    def hp_space_1(_):
+        # hp_space = asdict(args)
+        hp_space = {}
+        hp_space.update(dict(
+            transformer = choices(['bert-base-cased']),
+            freeze_transformer = choices([True, False]),
+            add_word_embs = choices([True, False]),
+            add_amb_embs = choices([True, False])
+        ))
+        return hp_space
+    hp_space = {
+        '1': hp_space_1
+    }[cmd_args.hpspace]
+    is_grid = not cmd_args.usehyperopt
     return hp_space, is_grid

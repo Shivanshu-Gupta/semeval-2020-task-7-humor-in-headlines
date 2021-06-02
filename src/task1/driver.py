@@ -32,4 +32,7 @@ tokenizer, ds, model, trainer = setup(args)
 print_ds_stats(ds, silent=cmd_args.silent)
 
 trainer.train()
-trainer.evaluate()
+eval_metrics = trainer.evaluate()
+print(eval_metrics)
+test_metrics = trainer.evaluate(ds['test'], metric_key_prefix='test')
+print(test_metrics)

@@ -1,9 +1,5 @@
 import re
 import numpy as np
-import torchtext
-
-import datasets
-from datasets import load_dataset, ClassLabel
 
 # def _make_headline(s, e):
 #     p = re.compile(r'<(.*)/>')

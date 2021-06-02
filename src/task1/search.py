@@ -1,8 +1,6 @@
 import os
 import sys
-import argparse
 import comet_ml
-import importlib
 
 # Better to set CUDA_VISIBLEDEVICES while running the script as: `CUDA_VISIBLE_DEVICES=0 python task1-driver.py <options>``
 # os.environ['CUDA_VISIBLE_DEVICES'] = '0'
@@ -15,60 +13,67 @@ root_folder = os.path.abspath(os.path.dirname(os.path.dirname(os.path.abspath(__
 sys.path.insert(0, root_folder)
 print(sys.path)
 
-from ray.tune import ASHAScheduler, HyperOptSearch
+from ray.tune.schedulers import ASHAScheduler
+from ray.tune.suggest.hyperopt import HyperOptSearch
 
-from task1 import params
 from task1.util import setup
-from task1.params import Task1Arguments, get_args
+from task1.params import Task1Arguments, get_args, get_hp_space
 from util import get_common_argparser, print_ds_stats, output as print
-from params import ray_dir
+from params import outputs_dir
 
 def main(cmd_args):
-    args: Task1Arguments = get_args(cmd_args=cmd_args, search=True)
+    args: Task1Arguments = get_args(cmd_args=cmd_args, search=True,
+                                    skip_memory_metrics=True,
+                                    disable_tqdm=True)
     tokenizer, ds, model_init, trainer = setup(args, search=True)
     print_ds_stats(ds, silent=cmd_args.silent)
 
-    def objective_fn(metrics):
-        return metrics['rmse']
-
-    hp_space, is_grid = getattr(params, f'hp_space_{cmd_args.hpspace}')(hyperopt=cmd_args.usehyperopt)
+    hp_space, is_grid = get_hp_space(cmd_args)
+    print(hp_space(None))
 
     scheduler = ASHAScheduler(
         max_t=args.num_train_epochs,
         grace_period=5,
         reduction_factor=2)
 
-    # Specify the search space and maximize score
     search_alg = None
     if cmd_args.usehyperopt:
         # current_best_params = [get_best_config(args.dataset, args.model, args.emb, args.enc)]
-        # print(f'Using hyperopt with best guesses: {current_best_params}')
-        search_alg = HyperOptSearch(metric="val_accuracy", mode="max",
+        current_best_params = []
+        print(f'Using hyperopt with best guesses: {current_best_params}')
+        search_alg = HyperOptSearch(metric="eval_rmse", mode="min",
                                     random_state_seed=args.seed,
-                                    # points_to_evaluate=current_best_params
-                                    )
-    elif is_grid:
+                                    points_to_evaluate=current_best_params)
+    if is_grid:
         cmd_args.num_samples = 1
+
     tune_args = dict(
         name=f'task1/{cmd_args.hpspace}',
-        local_dir=ray_dir,
+        local_dir=os.path.join(outputs_dir, 'ray_results'),
         resources_per_trial={"cpu": 2, 'gpu': cmd_args.gpus_per_trial},
         scheduler=scheduler,
         search_alg=search_alg,
         log_to_file=True,
+        metric='eval_rmse',
         mode='min'
     )
     best_run = trainer.hyperparameter_search(direction="minimize",
                                              hp_space=hp_space,
-                                             compute_objective=objective_fn,
+                                             compute_objective=lambda metrics: metrics['eval_rmse'],
                                              n_trials=cmd_args.num_samples,
+                                             backend="ray",
                                              **tune_args)
     print(best_run)
-    for n, v in best_run.hyperparameters.items():
-        setattr(trainer.args, n, v)
+    if cmd_args.evaluate_best:
+        trainer.args.disable_tqdm = False
+        for n, v in best_run.hyperparameters.items():
+            setattr(trainer.args, n, v)
 
-    trainer.train()
-    trainer.evaluate()
+        trainer.train()
+        eval_metrics = trainer.evaluate()
+        print(eval_metrics)
+        test_metrics = trainer.evaluate(ds['test'], metric_key_prefix='test')
+        print(test_metrics)
 
 if __name__ == '__main__':
     parser = get_common_argparser()
