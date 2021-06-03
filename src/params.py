@@ -25,13 +25,12 @@ def disambiguate(o, t):
 class TrainingParams(Parameters):
     seed: int = 42
     overwrite_output_dir: bool = True
-    num_train_epochs:int = 5
+    num_train_epochs:int = 50
     per_device_train_batch_size:int = 128
-    per_device_eval_batch_size:int = 1024
+    per_device_eval_batch_size:int = 512
     remove_unused_columns: bool = False
-    warmup_steps:int = 500
-    weight_decay: float = 0.9
-    learning_rate: float = 5e-5
+    warmup_steps:int = 200
+    learning_rate: float = 5e-4
     evaluation_strategy: str = "epoch"
     logging_strategy: str = "epoch"
     do_train: bool = True

@@ -21,7 +21,7 @@ class RegressionModel(nn.Module):
         self.name = '_'.join(name_parts)
 
         self.l1 = nn.Linear(num_features, 256)
-        self.l2 = nn.Linear(256, 256)
+#         self.l2 = nn.Linear(256, 256)
         self.lout = nn.Linear(256, 1)
 
     def forward(self, input_ids, attention_mask, token_type_ids, grade, **kwargs):
@@ -44,7 +44,7 @@ class RegressionModel(nn.Module):
         # print(features.shape)
 
         x = F.relu(self.l1(features))
-        x = F.relu(self.l2(x))
+#         x = F.relu(self.l2(x))
         y_pred = self.lout(x).squeeze(-1)
         loss = torch.sqrt(F.mse_loss(y_pred, grade))
         return loss, y_pred

@@ -13,6 +13,7 @@ import comet_ml
 from pprint import pprint as print
 from pdb import set_trace
 from transformers import AutoTokenizer, Trainer, TrainingArguments
+import transformers
 
 from data import get_task1_dataset
 from models import RegressionModel
@@ -53,6 +54,9 @@ if args.num_epochs > 0:
     default_training_args.num_train_epochs = args.num_epochs
 
 compute_metrics = get_compute_metrics_task1()
+# optim = torch.optim.RMSprop()
+# scheduler
+early_stopping = transformers.EarlyStoppingCallback(early_stopping_patience=3)
 
 training_args = TrainingArguments(
     output_dir=os.path.join(models_dir, f'task1/{model.name}'),
@@ -68,7 +72,9 @@ trainer = Trainer(
     train_dataset=ds['train'],
     eval_dataset=ds['validation'],
     tokenizer=tokenizer,
-    compute_metrics=compute_metrics
+    compute_metrics=compute_metrics,
+    callbacks=[early_stopping]
+#     optimizers=(optim,scheduler)
 )
 trainer.train()
 
