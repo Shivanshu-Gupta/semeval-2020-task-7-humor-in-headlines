@@ -8,7 +8,8 @@ class RegressionModel(nn.Module):
     def __init__(self, transformer='bert-base-cased', word_emb_dim=0, amb_emb_dim=0):
         super(RegressionModel, self).__init__()
 
-        self.sentence_embedder = AutoModel.from_pretrained(transformer).eval()
+#         self.sentence_embedder = AutoModel.from_pretrained(transformer).eval()
+        self.sentence_embedder = AutoModel.from_pretrained(transformer).train()
         num_features = self.sentence_embedder.pooler.dense.out_features + 2 * word_emb_dim + 4 * amb_emb_dim
         self.add_word_embs = bool(word_emb_dim)
         self.add_amb_embs = bool(amb_emb_dim)
@@ -21,16 +22,16 @@ class RegressionModel(nn.Module):
         self.name = '_'.join(name_parts)
 
         self.l1 = nn.Linear(num_features, 256)
-#         self.l2 = nn.Linear(256, 256)
+        self.l2 = nn.Linear(256, 256)
         self.lout = nn.Linear(256, 1)
 
     def forward(self, input_ids, attention_mask, token_type_ids, grade, **kwargs):
-        with torch.no_grad():
-            sentence_emb = self.sentence_embedder(
-                input_ids=input_ids,
-                attention_mask=attention_mask,
-                token_type_ids=token_type_ids
-            ).pooler_output
+#         with torch.no_grad():
+        sentence_emb = self.sentence_embedder(
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+            token_type_ids=token_type_ids
+        ).pooler_output
 
         parts = [sentence_emb]
         if self.add_word_embs:
@@ -44,7 +45,7 @@ class RegressionModel(nn.Module):
         # print(features.shape)
 
         x = F.relu(self.l1(features))
-#         x = F.relu(self.l2(x))
+        x = F.relu(self.l2(x))
         y_pred = self.lout(x).squeeze(-1)
-        loss = torch.sqrt(F.mse_loss(y_pred, grade))
+        loss = F.mse_loss(y_pred, grade)
         return loss, y_pred

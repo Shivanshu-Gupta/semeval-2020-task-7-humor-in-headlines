@@ -9,9 +9,9 @@ def get_compute_metrics_task1():
     def compute_metrics(pred: EvalPrediction):
         grades = pred.label_ids
         preds = pred.predictions 
-        mse = mean_squared_error(y_true=grades, y_pred=preds, squared=False)
+        rmse = mean_squared_error(y_true=grades, y_pred=preds, squared=False)
         return {
-            'rmse': mse
+            'rmse': rmse
         }
     return compute_metrics
 

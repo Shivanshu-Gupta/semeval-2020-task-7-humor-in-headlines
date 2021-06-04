@@ -14,6 +14,7 @@ from pprint import pprint as print
 from pdb import set_trace
 from transformers import AutoTokenizer, Trainer, TrainingArguments
 import transformers
+import torch
 
 from data import get_task1_dataset
 from models import RegressionModel
@@ -23,9 +24,9 @@ from params import models_dir, TrainingParams
 parser = argparse.ArgumentParser()
 parser.add_argument("-o", "--overwrite", action='store_true')
 parser.add_argument("--silent", action='store_true')
-parser.add_argument("--usecomet", action='store_true')
+parser.add_argument("--usecomet", action='store_true', default=True)
 parser.add_argument("--transformer", type=str, default='bert-base-cased')
-parser.add_argument("--add_word_embs", action='store_true')
+parser.add_argument("--add_word_embs", action='store_true', default=True)
 parser.add_argument("--add_amb_embs", action='store_true')
 parser.add_argument("--num_epochs", type=int, default=0)
 args = parser.parse_args()
@@ -54,9 +55,7 @@ if args.num_epochs > 0:
     default_training_args.num_train_epochs = args.num_epochs
 
 compute_metrics = get_compute_metrics_task1()
-# optim = torch.optim.RMSprop()
-# scheduler
-early_stopping = transformers.EarlyStoppingCallback(early_stopping_patience=3)
+optim = torch.optim.RMSprop(model.parameters(), lr=5e-5)
 
 training_args = TrainingArguments(
     output_dir=os.path.join(models_dir, f'task1/{model.name}'),
@@ -73,8 +72,10 @@ trainer = Trainer(
     eval_dataset=ds['validation'],
     tokenizer=tokenizer,
     compute_metrics=compute_metrics,
-    callbacks=[early_stopping]
-#     optimizers=(optim,scheduler)
+    optimizers=(optim, None)
 )
 trainer.train()
-
+eval_metrics = trainer.evaluate()
+print(eval_metrics)
+test_metrics = trainer.evaluate(ds['test'], metric_key_prefix='test')
+print(test_metrics)
