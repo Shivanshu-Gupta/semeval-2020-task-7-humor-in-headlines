@@ -4,12 +4,12 @@ from transformers import TrainingArguments
 
 from ray import tune
 
-from params import DefaultTrainingArguments, outputs_dir
+from params import get_training_args_dict, outputs_dir
 
 @dataclass
 class Task1Arguments(TrainingArguments):
     transformer: str = 'bert-base-cased'
-    freeze_transformer: bool = False
+    freeze_transformer: bool = True
     add_word_embs: bool = False
     add_amb_embs: bool = False
 
@@ -24,22 +24,13 @@ def get_model_name(args: Task1Arguments):
     name = '_'.join(name_parts)
     return name
 
-def get_training_args_dict(cmd_args):
-    training_args_dict = DefaultTrainingArguments().to_dict()
-    training_args_dict.update(dict(
-        output_dir = '',
-        label_names = ["grade"],
-        metric_for_best_model = 'rmse',
-        report_to = 'comet_ml' if cmd_args.usecomet else "none",
-        overwrite_output_dir = cmd_args.overwrite
-    ))
-    if cmd_args.num_epochs > 0:
-        training_args_dict['num_train_epochs'] = cmd_args.num_epochs
-    return training_args_dict
-
-
 def get_args(cmd_args, search=False, **kwargs):
     args_dict = get_training_args_dict(cmd_args)
+    args_dict.update(dict(
+        label_names = ["grade"],
+        metric_for_best_model = 'eval_rmse',
+        greater_is_better = False
+    ))
     if not search:
         args_dict.update(dict(
             transformer = cmd_args.transformer,
@@ -57,7 +48,7 @@ def get_choice_fn(hyperopt=False):
     else: return tune.grid_search
 
 def get_hp_space(cmd_args):
-    choices = get_choice_fn(hyperopt=cmd_args.usehyperopt)
+    choices = get_choice_fn(hyperopt=cmd_args.hyperopt)
     args = get_args(cmd_args=cmd_args, search=True, skip_memory_metrics=True)
     def hp_space_1(_):
         # hp_space = asdict(args)
@@ -72,5 +63,5 @@ def get_hp_space(cmd_args):
     hp_space = {
         '1': hp_space_1
     }[cmd_args.hpspace]
-    is_grid = not cmd_args.usehyperopt
+    is_grid = not cmd_args.hyperopt
     return hp_space, is_grid

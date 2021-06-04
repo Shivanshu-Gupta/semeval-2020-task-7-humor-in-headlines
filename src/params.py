@@ -17,6 +17,7 @@ def disambiguate(o, t):
 
 @attr.s(auto_attribs=True)
 class DefaultTrainingArguments(Parameters):
+    output_dir: str = ''
     seed: int = 42
     overwrite_output_dir: bool = True
     num_train_epochs:int = 5
@@ -31,3 +32,21 @@ class DefaultTrainingArguments(Parameters):
     do_train: bool = True
     do_eval: bool = True
     load_best_model_at_end: bool = True
+
+@attr.s(auto_attribs=True)
+class MetricParams(Parameters):
+    name: str = 'accuracy'
+    direction: str = 'maximize'
+    mode: str = 'max'
+    def __attrs_post_init__(self):
+        self.mode = self.direction[:3]
+
+def get_training_args_dict(cmd_args):
+    training_args_dict = DefaultTrainingArguments().to_dict()
+    training_args_dict.update(dict(
+        report_to = 'comet_ml' if cmd_args.comet else "none",
+        overwrite_output_dir = cmd_args.overwrite
+    ))
+    if cmd_args.num_epochs > 0:
+        training_args_dict['num_train_epochs'] = cmd_args.num_epochs
+    return training_args_dict

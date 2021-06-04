@@ -4,7 +4,7 @@ from pprint import pprint as print
 from datasets.dataset_dict import DatasetDict
 import torch
 
-def output(string, filepath=None, silent=False):
+def output(string='\n', filepath=None, silent=False):
     if not silent: print(string)
     if filepath is not None:
         with open(filepath, 'w') as outf:
@@ -19,7 +19,7 @@ def get_common_argparser():
     parser = argparse.ArgumentParser()
     parser.add_argument('-o', '--overwrite', action='store_true')
     parser.add_argument('--silent', action='store_true')
-    parser.add_argument('--usecomet', action='store_true')
+    parser.add_argument('--comet', action='store_true')
     parser.add_argument('--num_epochs', type=int, default=0)
     return parser
 
