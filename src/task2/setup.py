@@ -33,7 +33,7 @@ def get_compute_metrics(tokenizer, ds, label_names, split='validation'):
 
 def model_init(args):
     if args is None:
-        args = asdict(Task2Arguments())
+        args = asdict(Task2Arguments(output_dir=''))
     return AutoModelForSequenceClassification.from_pretrained(args['transformer'], num_labels=2)
 
 def setup(args: Task2Arguments, search=False):

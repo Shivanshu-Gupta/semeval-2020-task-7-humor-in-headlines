@@ -21,7 +21,7 @@ def get_model_init(ds: DatasetDict):
     _amb_emb_dim = ds['train'][0]['amb_emb_ini'].shape[0]
     def model_init(args):
         if args is None: # required because Trainer seems to call model_init() in its constructor without arguments
-            args = asdict(Task1Arguments())
+            args = asdict(Task1Arguments(output_dir=''))
         word_emb_dim = _word_emb_dim if args['add_word_embs'] else 0
         amb_emb_dim = _amb_emb_dim if args['add_amb_embs'] else 0
         return RegressionModel(transformer=args['transformer'],

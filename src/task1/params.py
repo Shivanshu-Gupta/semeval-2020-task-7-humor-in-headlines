@@ -1,3 +1,4 @@
+import comet_ml
 import os
 from dataclasses import dataclass, asdict
 from transformers import TrainingArguments
