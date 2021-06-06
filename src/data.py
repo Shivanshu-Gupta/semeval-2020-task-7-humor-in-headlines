@@ -1,5 +1,6 @@
 import re
 import numpy as np
+import math
 
 # def _make_headline(s, e):
 #     p = re.compile(r'<(.*)/>')
@@ -21,7 +22,7 @@ def get_synsets_sizes(ds, task=1):
                         synset_sizes[w] = len(wordnet.synsets(w))
     return synset_sizes
 
-def get_preprocess_ds(glove=None, synset_sizes=None, idx=''):
+def get_preprocess_ds(glove=None, synset_sizes=None, amb_feat=None, idx=''):
     if synset_sizes is not None:
         max_len = max(synset_sizes.values())
     def preprocess_ds(example):
@@ -51,7 +52,20 @@ def get_preprocess_ds(glove=None, synset_sizes=None, idx=''):
                 f'word_ini{idx}_emb': word_embs[0].numpy(),
                 f'word_fin{idx}_emb': word_embs[1].numpy()
             })
-        if synset_sizes is not None:
+        if amb_feat is not None:
+            assert synset_sizes is not None
+            def get_amb_feat(hl):
+                tokens = hl.split()
+                sizes = [synset_sizes[w] for w in tokens]
+                size_prod = np.prod(sizes) if np.prod(sizes) != 0 else 0.0001
+                f=math.log(size_prod)
+                return [f]
+            for pref in ['ini', 'fin']:
+                feat = get_amb_feat(d[f'hl_{pref}{idx}'])
+                d.update({
+                    f'amb_feat_{pref}{idx}': feat
+                })
+        elif synset_sizes is not None:
             def get_amb_emb(hl):
                 tokens = hl.split()
                 amb_emb = np.zeros([max_len])

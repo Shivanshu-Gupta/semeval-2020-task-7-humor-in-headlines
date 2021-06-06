@@ -19,6 +19,7 @@ parser_1.add_argument("--transformer", type=str, default='bert-base-cased')
 parser_1.add_argument("--freeze_transformer", action="store_true")
 parser_1.add_argument("--add_word_embs", action='store_true')
 parser_1.add_argument("--add_amb_embs", action='store_true')
+parser_1.add_argument("--add_amb_feat", action='store_true')
 
 # Parser for task 2
 parser_2 = subparsers.add_parser('task2', help='Task 2 arguments')

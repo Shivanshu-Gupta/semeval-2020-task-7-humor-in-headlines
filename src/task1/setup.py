@@ -17,17 +17,23 @@ def compute_metrics(pred: EvalPrediction):
     return dict(rmse=rmse)
 
 def get_model_init(ds: DatasetDict):
-    _word_emb_dim = ds['train'][0]['word_ini_emb'].shape[0]
-    _amb_emb_dim = ds['train'][0]['amb_emb_ini'].shape[0]
+    #_word_emb_dim = ds['train'][0]['word_ini_emb'].shape[0]
+    #_amb_emb_dim = ds['train'][0]['amb_emb_ini'].shape[0]
     def model_init(args):
         if args is None: # required because Trainer seems to call model_init() in its constructor without arguments
             args = asdict(Task1Arguments(output_dir=''))
-        word_emb_dim = _word_emb_dim if args['add_word_embs'] else 0
-        amb_emb_dim = _amb_emb_dim if args['add_amb_embs'] else 0
+        word_emb_dim = 0
+        if args['add_word_embs']:
+            word_emb_dim = ds['train'][0]['word_ini_emb'].shape[0]
+        amb_emb_dim = 0
+        if args['add_amb_embs']:
+            amb_emb_dim = ds['train'][0]['amb_emb_ini'].shape[0]
+        amb_feat_dim = 2 if args['add_amb_feat'] else 0
         return RegressionModel(transformer=args['transformer'],
                                 freeze_transformer=args['freeze_transformer'],
                                 word_emb_dim=word_emb_dim,
-                                amb_emb_dim=amb_emb_dim)
+                                amb_emb_dim=amb_emb_dim,
+                                amb_feat_dim=amb_feat_dim)
     return model_init
 
 def setup(args: Task1Arguments, search=False):
@@ -35,6 +41,7 @@ def setup(args: Task1Arguments, search=False):
     ds = get_dataset(tokenizer=tokenizer,
                     add_word_embs=args.add_word_embs if not search else True,
                     add_amb_embs=args.add_amb_embs if not search else True,
+                    add_amb_feat=args.add_amb_feat if not search else True,
                     hl_w_mod=False)
     model_init = get_model_init(ds)
     trainer_args = dict(

@@ -13,6 +13,7 @@ class Task1Arguments(TrainingArguments):
     freeze_transformer: bool = True
     add_word_embs: bool = False
     add_amb_embs: bool = False
+    add_amb_feat: bool = False
 
 def get_model_name(args: Task1Arguments):
     name_parts = [args.transformer]
@@ -22,6 +23,8 @@ def get_model_name(args: Task1Arguments):
         name_parts += ['word-emb']
     if args.add_amb_embs:
         name_parts += ['amb-emb']
+    if args.add_amb_feat:
+        name_parts += ['amb-feat']
     name = '_'.join(name_parts)
     return name
 
@@ -38,6 +41,7 @@ def get_args(cmd_args, search=False, **kwargs):
             freeze_transformer = cmd_args.freeze_transformer,
             add_word_embs = cmd_args.add_word_embs,
             add_amb_embs = cmd_args.add_amb_embs,
+            add_amb_feat = cmd_args.add_amb_feat,
         ))
     args_dict.update(**kwargs)
     args = Task1Arguments(**args_dict)
@@ -58,7 +62,8 @@ def get_hp_space(cmd_args):
             transformer = choices(['bert-base-cased']),
             freeze_transformer = choices([True, False]),
             add_word_embs = choices([True, False]),
-            add_amb_embs = choices([True, False])
+            add_amb_embs = choices([True, False]),
+            add_amb_feat = choices([True, False])
         ))
         return hp_space
     hp_space = {

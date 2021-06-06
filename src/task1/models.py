@@ -7,19 +7,22 @@ import torch.nn.functional as F
 from transformers import AutoModel
 
 class RegressionModel(nn.Module):
-    def __init__(self, transformer='bert-base-cased', freeze_transformer=True, word_emb_dim=0, amb_emb_dim=0):
+    def __init__(self, transformer='bert-base-cased', freeze_transformer=True, word_emb_dim=0, amb_emb_dim=0, amb_feat_dim=0):
         super(RegressionModel, self).__init__()
         self.freeze_transformer = freeze_transformer
         self.sentence_embedder = AutoModel.from_pretrained(transformer).eval()
-        num_features = self.sentence_embedder.pooler.dense.out_features + 2 * word_emb_dim + 4 * amb_emb_dim
+        num_features = self.sentence_embedder.pooler.dense.out_features + 2 * word_emb_dim + 4 * amb_emb_dim + amb_feat_dim
         self.add_word_embs = bool(word_emb_dim)
         self.add_amb_embs = bool(amb_emb_dim)
+        self.add_amb_feat = bool(amb_feat_dim)
 
         name_parts = [transformer]
         if word_emb_dim:
             name_parts += ['word-emb']
         if amb_emb_dim:
             name_parts += ['amb-emb']
+        if amb_feat_dim:
+            name_parts += ['amb-feat']
         self.name = '_'.join(name_parts)
 
         self.l1 = nn.Linear(num_features, 256)
@@ -42,6 +45,9 @@ class RegressionModel(nn.Module):
                           kwargs['amb_mask_ini'],
                           kwargs['amb_emb_fin'],
                           kwargs['amb_mask_fin'],])
+        if self.add_amb_feat:
+            parts.extend([kwargs['amb_feat_ini'],
+                          kwargs['amb_feat_fin']])
         features = torch.cat(parts, 1)
         # print(features.shape)
 
