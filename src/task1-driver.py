@@ -55,7 +55,7 @@ if args.num_epochs > 0:
     default_training_args.num_train_epochs = args.num_epochs
 
 compute_metrics = get_compute_metrics_task1()
-optim = torch.optim.RMSprop(model.parameters(), lr=5e-5)
+# optim = torch.optim.RMSprop(model.parameters(), lr=1e-5)
 
 training_args = TrainingArguments(
     output_dir=os.path.join(models_dir, f'task1/{model.name}'),
@@ -71,11 +71,23 @@ trainer = Trainer(
     train_dataset=ds['train'],
     eval_dataset=ds['validation'],
     tokenizer=tokenizer,
-    compute_metrics=compute_metrics,
-    optimizers=(optim, None)
+    compute_metrics=compute_metrics
+#     optimizers=(optim, None)
 )
 trainer.train()
+
 eval_metrics = trainer.evaluate()
 print(eval_metrics)
+
 test_metrics = trainer.evaluate(ds['test'], metric_key_prefix='test')
 print(test_metrics)
+
+output_dir = os.path.join(models_dir, f'task1/{model.name}')
+test_predictions = trainer.predict(ds['test'], metric_key_prefix='test')
+df_test_data = ds['test'].to_pandas()
+df_test_data['pred'] = test_predictions.predictions
+output_predictions = df_test_data[['id','pred']] 
+out_loc = os.path.join(output_dir, 'test_predictions.csv')
+output_predictions.to_csv(out_loc, index=False)
+
+trainer.save_model(output_dir=output_dir)
