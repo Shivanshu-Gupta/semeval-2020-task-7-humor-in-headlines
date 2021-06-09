@@ -166,14 +166,3 @@ if __name__ == '__main__':
 # cmd_args.overwrite=True
 # cmd_args.gpus_per_trial=1
 # cmd_args.num_epochs=2
-
-
-kwargs = dict(
-    transformer='roberta-base',
-    freeze_transformer=False,
-    word_emb_dim=0,
-    amb_emb_dim=0,
-    amb_feat_dim=0
-)
-checkpoint_path = '../outputs/models/task-1/roberta-base/checkpoint-456/pytorch_model.bin'
-model = GradeComparisonModel(checkpoint_path, **kwargs)
