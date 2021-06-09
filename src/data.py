@@ -22,7 +22,7 @@ def get_synsets_sizes(ds, task=1):
                         synset_sizes[w] = len(wordnet.synsets(w))
     return synset_sizes
 
-def get_preprocess_ds(glove=None, synset_sizes=None, amb_feat=None, idx=''):
+def get_preprocess_ds(glove=None, synset_sizes=None, amb_feat=False, idx=''):
     if synset_sizes is not None:
         max_len = max(synset_sizes.values())
     def preprocess_ds(example):
@@ -40,7 +40,7 @@ def get_preprocess_ds(glove=None, synset_sizes=None, amb_feat=None, idx=''):
         hl_fin = prefix + word_fin + suffix
         hl_w_mod = prefix + f'[{word_ini} | {word_fin}]' + suffix
         d = {
-            f'hl_ini{idx}': hl_ini,
+            f'hl_ini': hl_ini,
             f'hl_fin{idx}': hl_fin,
             f'word_ini{idx}': word_ini,
             f'hl_w_mod{idx}': hl_w_mod,
@@ -52,13 +52,13 @@ def get_preprocess_ds(glove=None, synset_sizes=None, amb_feat=None, idx=''):
                 f'word_ini{idx}_emb': word_embs[0].numpy(),
                 f'word_fin{idx}_emb': word_embs[1].numpy()
             })
-        if amb_feat is not None:
+        if amb_feat:
             assert synset_sizes is not None
             def get_amb_feat(hl):
                 tokens = hl.split()
                 sizes = [synset_sizes[w] for w in tokens]
                 size_prod = np.prod(sizes) if np.prod(sizes) != 0 else 0.0001
-                f=math.log(size_prod)
+                f = math.log(size_prod)
                 return [f]
             for pref in ['ini', 'fin']:
                 feat = get_amb_feat(d[f'hl_{pref}{idx}'])

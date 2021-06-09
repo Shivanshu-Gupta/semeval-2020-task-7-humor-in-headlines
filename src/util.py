@@ -1,14 +1,21 @@
 import argparse
-from typing import Union
-from pprint import pprint as print
+from pprint import PrettyPrinter
 from datasets.dataset_dict import DatasetDict
 import torch
 
-def output(string='\n', filepath=None, silent=False):
-    if not silent: print(string)
+pp = PrettyPrinter()
+
+def output(content=None, filepath=None, silent=False):
+    if content is None: content = '\n'
+    if not silent:
+        if isinstance(content, str): print(content)
+        else: pp.pprint(content)
+
     if filepath is not None:
         with open(filepath, 'w') as outf:
-            outf.write(string + '\n')
+            if isinstance(content, str): outf.write(content)
+            else: outf.write(pp.pformat(content))
+            outf.write('\n')
 
 def print_ds_stats(ds: DatasetDict, **kwargs):
     for split in ds:
@@ -20,7 +27,7 @@ def get_common_argparser():
     parser.add_argument('-o', '--overwrite', action='store_true')
     parser.add_argument('--silent', action='store_true')
     parser.add_argument('--comet', action='store_true')
-    parser.add_argument('--num_epochs', type=int, default=0)
+    parser.add_argument('--num_epochs', type=int, default=1)
     return parser
 
 def create_object_from_class_string(module_name, class_name, parameters):

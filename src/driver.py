@@ -1,59 +1,92 @@
-# run task1: python driver.py <common options> task1 <task 1 options>
-# run task2: python driver.py <common options> task2 <task 2 options>
+# run task1: python driver.py <common options> task-1 <task 1 options>
+# run task2: python driver.py <common options> task-2 model-<id> <task 2 model options>
 
 import os
 import comet_ml
 
+from transformers import set_seed
+
+import task1.params
+import task2.params
+from params import inputs_dir
 from util import get_common_argparser, print_ds_stats, output as print
 
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
-os.environ['COMET_MODE'] = 'ONLINE'
 
-parser = get_common_argparser()
-parser.add_argument('--gpu_idx', type=int, default=None)
-subparsers = parser.add_subparsers(help='Task arguments', dest='task')
+def write_pred_file(task_id, tst_ds, preds, predfile=''):
+    if not predfile: predfile = f'task-{task_id}-output.csv'
+    from copy import deepcopy
+    tst_ds = deepcopy(tst_ds)
+    tst_ds._output_all_columns = True
+    import pandas as pd
+    results = pd.DataFrame(dict(id=tst_ds['id'], pred=preds))
+    results.to_csv(predfile, index=False)
 
-# Parser for task 1
-parser_1 = subparsers.add_parser('task1', help='Which task?')
-parser_1.add_argument("--transformer", type=str, default='bert-base-cased')
-parser_1.add_argument("--freeze_transformer", action="store_true")
-parser_1.add_argument("--add_word_embs", action='store_true')
-parser_1.add_argument("--add_amb_embs", action='store_true')
-parser_1.add_argument("--add_amb_feat", action='store_true')
+def main(cmd_args, task_id, args, model_id=None):
+    print(args)
+    set_seed(args.seed)
+    tokenizer, ds, model_init, trainer, metric = setup(args, data_dir=inputs_dir)
+    print_ds_stats(ds, silent=cmd_args.silent)
 
-# Parser for task 2
-parser_2 = subparsers.add_parser('task2', help='Task 2 arguments')
-parser_2.add_argument("--transformer", type=str, default='bert-base-cased')
-parser_2.add_argument("--combined", action='store_true')
+    if task_id != 2 or model_id != 0:   # Task 2 Model 0 simply compares grades predicted by a trained task 1 model
+        trainer.train()
+        # eval_metrics = trainer.evaluate()
+        eval_preds, eval_labels, eval_metrics = trainer.predict(ds['validation'], metric_key_prefix='eval')
+        print(eval_metrics)
 
-cmd_args = parser.parse_args()
-print(cmd_args, silent=cmd_args.silent)
 
-if cmd_args.gpu_idx is not None:
-    gpu = cmd_args.gpu_idx
-    os.environ['CUDA_VISIBLE_DEVICES'] = str(gpu) if gpu >= 0 else ''
+        if task_id == 2:    # confusion matrix in task 2's compute_metrics needs index_to_example_function
+            from task2.setup import get_compute_metrics
+            trainer.compute_metrics = get_compute_metrics(tokenizer=tokenizer, ds=ds, split='test')
 
-task_id = int(cmd_args.task[-1:])
-os.environ['COMET_PROJECT_NAME'] = f'humor-{task_id}'
-if task_id == 1:
-    from task1.params import Task1Arguments as TaskArguments, get_args
-    from task1.setup import setup
-else:
-    from task2.params import Task2Arguments as TaskArguments, get_args
-    from task2.setup import setup
+        test_preds, test_labels, test_metrics = trainer.predict(ds['test'], metric_key_prefix='test')
+        print(test_metrics)
+    else:
+        pass
+    if cmd_args.write_preds:
+        from params import outputs_dir
+        output_dir = os.path.join(outputs_dir, f'output/task-{task_id}/{args.model_name()}')
+        os.makedirs(output_dir, exist_ok=True)
+        write_pred_file(task_id, ds['validation'], eval_preds, os.path.join(output_dir, 'dev-preds.csv'))
+        write_pred_file(task_id, ds['test'], test_preds, os.path.join(output_dir, 'test-preds.csv'))
 
-args: TaskArguments = get_args(cmd_args=cmd_args)
-tokenizer, ds, model, trainer, metric = setup(args)
-print_ds_stats(ds, silent=cmd_args.silent)
+if __name__ == '__main__':
+    parser = get_common_argparser()
+    parser.add_argument('--gpu_idx', type=int, default=None)
+    parser.add_argument('--learning_rate', type=float, default=3e-5)
+    parser.add_argument('--weight_decay', type=float, default=0.2)
+    parser.add_argument('--write_preds', action='store_true')
+    subparsers = parser.add_subparsers(help='Which task?', dest='task')
 
-trainer.train()
-eval_metrics = trainer.evaluate()
-print(eval_metrics)
+    # Parser for task 1
+    parser_1 = subparsers.add_parser('task-1', help='Task 1 arguments')
+    task1.params.setup_parser(parser_1)
 
-if task_id == 2:    # confusion matrix in task 2's compute_metrics needs index_to_example_function
-    from task2.setup import get_compute_metrics
-    label_names = ds['train'].features['labels'].names
-    trainer.compute_metrics = get_compute_metrics(tokenizer=tokenizer, ds=ds,
-                                                    label_names=label_names, split='test')
-test_metrics = trainer.evaluate(ds['test'], metric_key_prefix='test')
-print(test_metrics)
+    # Parser for task 2
+    parser_2 = subparsers.add_parser('task-2', help='Task 2 arguments')
+    task2.params.setup_parser(parser_2)
+
+    cmd_args = parser.parse_args()
+    print(cmd_args, silent=cmd_args.silent)
+
+    task_id = int(cmd_args.task[-1:])
+
+    if cmd_args.gpu_idx is not None:
+        gpu = cmd_args.gpu_idx
+        os.environ['CUDA_VISIBLE_DEVICES'] = str(gpu) if gpu >= 0 else ''
+
+    if cmd_args.comet:
+        os.environ['COMET_PROJECT_NAME'] = f'humor-{task_id}'
+        os.environ['COMET_MODE'] = 'ONLINE'
+
+    if task_id == 1:
+        from task1.params import get_args
+        from task1.setup import setup
+        args = get_args(cmd_args=cmd_args)
+        main(cmd_args, task_id, args)
+    else:
+        from task2.params import get_args
+        from task2.setup import setup
+        model_id = int(cmd_args.model[-1:])
+        args = get_args(cmd_args=cmd_args, model_id=model_id)
+        main(cmd_args, task_id, args, model_id=model_id)

@@ -1,35 +1,93 @@
 # run: `python search.py --task <task_id> <options>``
-# python search.py --task 1 -o --comet --num_epochs 3 --gpus_per_trial 1 --evaluate_best
+# python search.py --task 1 --hp_space 1 -o --comet --num_epochs 3 --gpus_per_trial 1 --evaluate_best
+# python search.py --task 2 --hp_space model1_0 -o --comet --num_epochs 3 --gpus_per_trial 1 --evaluate_best
 import os
+from dataclasses import asdict
 import comet_ml
+
+from transformers import set_seed
+from transformers.trainer_callback import TrainerCallback
+from transformers.trainer_utils import IntervalStrategy
+
+import ray
+from ray import tune
 from ray.tune.schedulers import ASHAScheduler
 from ray.tune.suggest.hyperopt import HyperOptSearch
+from ray.tune.analysis.experiment_analysis import ExperimentAnalysis
 
 from util import get_common_argparser, print_ds_stats, output as print
-from params import outputs_dir
+from params import inputs_dir, outputs_dir, MetricParams
+from comet_upload import upload_confusion_matrices
 
+# os.environ['COMET_LOGGING_FILE']='comet.log'
+# os.environ['COMET_LOGGING_FILE_LEVEL']='debug'
+# os.environ['COMET_LOGGING_CONSOLE']='info'
 os.environ['COMET_DISABLE_AUTO_LOGGING']='1'    # temporarily to prevent: ImportError: You must import Comet before these modules: torch
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 os.environ['COMET_MODE'] = 'ONLINE'
+# os.environ['COMET_MODE'] = 'OFFLINE'
+# os.environ['COMET_OFFLINE_DIRECTORY'] = 'comet/'
+
+os.environ['TUNE_MAX_PENDING_TRIALS_PG'] = '16'
+
+class CometCallback(TrainerCallback):
+    def on_train_begin(self, args, state, control, **kwargs):
+        experiment: comet_ml.Experiment = comet_ml.config.get_global_experiment()
+        experiment.log_parameters(asdict(args))
+        if args.search_name: experiment.add_tag(args.search_name)
+        experiment.add_tag(args.transformer)
+        comet_exp_key = experiment.get_key()
+        os.makedirs(f'comet-{comet_exp_key}', exist_ok=True)
+
+class ReportMetricsCallback(TrainerCallback):
+    def on_evaluate(self, args, state, control, metrics, **kwargs):
+        tune.report(iterations=int(state.epoch), **metrics)
+
+def train(config, task_id, args, comet=False, checkpoint_dir=None):
+    from datasets.utils.logging import set_verbosity_error
+    set_verbosity_error()   # to not show ds map progress bars
+
+    for n, v in config.items():
+        setattr(args, n, v)
+    print(args)
+
+    if task_id == 1: from task1.setup import setup
+    else: from task2.setup import setup
+    set_seed(args.seed)
+    tokenizer, ds, model_init, trainer, metric = setup(args, data_dir='../../..')
+
+    trainer.args._n_gpu = 1
+    trainer.add_callback(ReportMetricsCallback)
+    if comet: trainer.add_callback(CometCallback)
+
+    trainer.train()
 
 def main(cmd_args):
     task_id = cmd_args.task
     os.environ['COMET_PROJECT_NAME'] = f'humor-{task_id}'
+    ray.init(dashboard_host='0.0.0.0', _temp_dir='/srv/ssd0/ucinlp/shivag5/tmp/ray')
+    search_args = dict(
+        search=True,
+        skip_memory_metrics=True,   # without this trainer.hyperparameter_search() + raytune bugs out
+        disable_tqdm=True
+    )
     if task_id == 1:
-        from task1.params import Task1Arguments as TaskArguments, get_args, get_hp_space
-        from task1.setup import setup
+        from task1.params import get_args, get_hp_space
+        args = get_args(cmd_args=cmd_args, **search_args)
+        metric = MetricParams(name='rmse', direction='minimize')
     else:
-        from task2.params import Task2Arguments as TaskArguments, get_args, get_hp_space
-        from task2.setup import setup
-
-    args: TaskArguments = get_args(cmd_args=cmd_args, search=True,
-                                skip_memory_metrics=True,   # without this trainer.hyperparameter_search() + raytune bugs out
-                                disable_tqdm=True)
-    tokenizer, ds, model_init, trainer, metric = setup(args, search=True)
-    print_ds_stats(ds, silent=silent)
+        model_id = int(cmd_args.hp_space.split('_')[0][-1:])
+        from task2.params import get_args, get_hp_space
+        args = get_args(cmd_args=cmd_args, model_id=model_id, **search_args)
+        metric = MetricParams(name='accuracy', direction='maximize')
+    args.search_name = cmd_args.hp_space
+    args.load_best_model_at_end = False
+    args.save_strategy = IntervalStrategy.NO
+    print(args)
 
     hp_space, is_grid = get_hp_space(cmd_args)
     print(hp_space(None), silent=silent)
+    # import sys; sys.exit()
 
     scheduler = ASHAScheduler(
         max_t=args.num_train_epochs,
@@ -40,49 +98,65 @@ def main(cmd_args):
     if cmd_args.hyperopt:
         current_best_params = []
         print(f'Using hyperopt with best guesses: {current_best_params}', silent=silent)
-        search_alg = HyperOptSearch(metric=f"eval_{metric.name}", mode="min",
+        search_alg = HyperOptSearch(metric=f"eval_{metric.name}", mode=metric.mode,
                                     random_state_seed=args.seed,
                                     points_to_evaluate=current_best_params)
     if is_grid:
         cmd_args.num_samples = 1
+    from ray.tune import CLIReporter
 
-    tune_args = dict(
-        name=f'task{task_id}/{cmd_args.hpspace}',
+    analysis: ExperimentAnalysis = tune.run(
+        tune.with_parameters(train, task_id=task_id, args=args, comet=cmd_args.comet),
+        name=f'task-{task_id}/{args.search_name}',
+        config=hp_space(None),
         local_dir=os.path.join(outputs_dir, 'ray_results'),
+        metric=f'eval_{metric.name}',
+        mode=metric.mode,
+        num_samples=cmd_args.num_samples,
         resources_per_trial={"cpu": 2, 'gpu': cmd_args.gpus_per_trial},
         scheduler=scheduler,
         search_alg=search_alg,
         log_to_file=True,
-        metric=f'eval_{metric.name}',
-        mode=metric.mode
+        progress_reporter=CLIReporter(metric_columns=[f'eval_{metric.name}', 'epoch']),
+        verbose=3,
+        resume='ERRORED_ONLY'
     )
-    best_run = trainer.hyperparameter_search(direction=metric.direction,
-                                            hp_space=hp_space,
-                                            compute_objective=lambda metrics: metrics['eval_rmse'],
-                                            n_trials=cmd_args.num_samples,
-                                            backend="ray",
-                                            **tune_args)
-    print(best_run, silent=silent)
-    if cmd_args.evaluate_best:
-        trainer.args.disable_tqdm = False
-        for n, v in best_run.hyperparameters.items():
-            setattr(trainer.args, n, v)
+    print(analysis.best_result)
+    print(f'Best hyperparameters found were: {analysis.best_config}')
+    upload_confusion_matrices(task_id, args.search_name, search_key=str(analysis.trials[0]))
 
+    if cmd_args.evaluate_best:
+        print('Evaluating best model.')
+        if task_id == 1:
+            from task1.setup import setup
+            args = get_args(cmd_args=cmd_args, search=True, **analysis.best_config)
+        else:
+            from task2.setup import setup
+            args = get_args(cmd_args=cmd_args, model_id=model_id, search=True, **analysis.best_config)
+        print(args)
+        args.search_name = ''
+
+        set_seed(args.seed)
+        tokenizer, ds, model_init, trainer, metric = setup(args, data_dir=inputs_dir)
+        if cmd_args.comet: trainer.add_callback(CometCallback)
         trainer.train()
         eval_metrics = trainer.evaluate()
         print(eval_metrics, silent=silent)
+
         if task_id == 2:    # confusion matrix in task 2's compute_metrics needs index_to_example_function
             from task2.setup import get_compute_metrics
-            label_names = ds['train'].features['labels'].names
-            trainer.compute_metrics = get_compute_metrics(tokenizer=tokenizer, ds=ds,
-                                                        label_names=label_names, split='test')
+            trainer.compute_metrics = get_compute_metrics(tokenizer=tokenizer,
+                                                          ds=ds, split='test')
+
         test_metrics = trainer.evaluate(ds['test'], metric_key_prefix='test')
         print(test_metrics, silent=silent)
+
 
 if __name__ == '__main__':
     parser = get_common_argparser()
     parser.add_argument('--task', type=int, choices=[1, 2], default=1)
-    parser.add_argument('--hpspace', type=str, default='1')
+    # parser.add_argument('--model', type=int, default=0, help='Model id for task 2')
+    parser.add_argument('--hp_space', type=str, default='1')
     parser.add_argument('--hyperopt', action='store_true')
     parser.add_argument('--num_samples', type=int, default=100)
     parser.add_argument('--gpus_per_trial', type=int, default=0)
@@ -92,3 +166,10 @@ if __name__ == '__main__':
     print(cmd_args, silent=silent)
 
     main(cmd_args)
+
+# cmd_args.comet=True
+# cmd_args.hp_space='model1_base'
+# cmd_args.task=2
+# cmd_args.overwrite=True
+# cmd_args.gpus_per_trial=1
+# cmd_args.num_epochs=2

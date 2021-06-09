@@ -12,10 +12,12 @@
     "sync-rsync.include": [
         "src***/",
         "scripts***/",
+        "demo***/",
         "*.py",
         "*.ipynb",
         "*.sh",
         "*.json",
     ],
     "python.pythonPath": "/Users/shivanshu/miniconda3/envs/dl/bin/python",
+    "python.linting.enabled": true,
 }

@@ -1,3 +1,4 @@
+from argparse import ArgumentParser
 import comet_ml
 import os
 from dataclasses import dataclass, asdict
@@ -5,28 +6,31 @@ from transformers import TrainingArguments
 
 from ray import tune
 
-from params import get_training_args_dict, outputs_dir
+from params import TaskArguments, get_training_args_dict, outputs_dir
 
 @dataclass
-class Task1Arguments(TrainingArguments):
-    transformer: str = 'bert-base-cased'
+class Task1Arguments(TaskArguments):
+    transformer: str = 'bert-base-cased'    # bert-{base, large}-cased, roberta-{base, large}, distilbert-base-cased, distilroberta-base
     freeze_transformer: bool = True
     add_word_embs: bool = False
     add_amb_embs: bool = False
     add_amb_feat: bool = False
 
-def get_model_name(args: Task1Arguments):
-    name_parts = [args.transformer]
-    if args.freeze_transformer:
-        name_parts = ['frozen']
-    if args.add_word_embs:
-        name_parts += ['word-emb']
-    if args.add_amb_embs:
-        name_parts += ['amb-emb']
-    if args.add_amb_feat:
-        name_parts += ['amb-feat']
-    name = '_'.join(name_parts)
-    return name
+    def model_name(self):
+        name_parts = [self.transformer]
+        if self.freeze_transformer:
+            name_parts += ['frozen']
+        if self.add_word_embs:
+            name_parts += ['word-emb']
+        if self.add_amb_embs:
+            name_parts += ['amb-emb']
+        if self.add_amb_feat:
+            name_parts += ['amb-feat']
+        name = '_'.join(name_parts)
+        return name
+
+def setup_parser(parser: ArgumentParser):
+    Task1Arguments.setup_parser(parser)
 
 def get_args(cmd_args, search=False, **kwargs):
     args_dict = get_training_args_dict(cmd_args)
@@ -36,16 +40,10 @@ def get_args(cmd_args, search=False, **kwargs):
         greater_is_better = False
     ))
     if not search:
-        args_dict.update(dict(
-            transformer = cmd_args.transformer,
-            freeze_transformer = cmd_args.freeze_transformer,
-            add_word_embs = cmd_args.add_word_embs,
-            add_amb_embs = cmd_args.add_amb_embs,
-            add_amb_feat = cmd_args.add_amb_feat,
-        ))
+        args_dict.update(Task1Arguments.parse_args(cmd_args=cmd_args))
     args_dict.update(**kwargs)
     args = Task1Arguments(**args_dict)
-    args.output_dir = os.path.join(outputs_dir, f'models/task1/{get_model_name(args)}')
+    args.output_dir = os.path.join(outputs_dir, f'models/task-1/{args.model_name()}')
     return args
 
 def get_choice_fn(hyperopt=False):
@@ -54,20 +52,28 @@ def get_choice_fn(hyperopt=False):
 
 def get_hp_space(cmd_args):
     choices = get_choice_fn(hyperopt=cmd_args.hyperopt)
-    args = get_args(cmd_args=cmd_args, search=True, skip_memory_metrics=True)
-    def hp_space_1(_):
-        # hp_space = asdict(args)
-        hp_space = {}
-        hp_space.update(dict(
-            transformer = choices(['bert-base-cased']),
+    hp_spaces = {
+        'base0': dict(transformer=choices(['bert-base-cased', 'roberta-base', 'distilbert-base-cased', 'distilroberta-base'])),
+        'base1': dict(
+            transformer=choices(['bert-base-cased', 'roberta-base', 'distilbert-base-cased', 'distilroberta-base']),
+            freeze_transformer=False
+            ),
+        'base2': dict(
+            transformer=choices(['bert-base-cased', 'roberta-base', 'distilbert-base-cased', 'distilroberta-base']),
+            freeze_transformer = choices([True, False]),
+            add_word_embs = choices([True, False]),
+            learning_rate=choices([1e-5, 3e-5, 1e-4, 3e-4, 1e-3]),
+            weight_decay=choices([0.05, 0.1, 0.2, 0.4, 0.8]),
+            add_amb_embs = False
+            ),
+        'amb_embs': dict(
+            transformer=choices(['bert-base-cased', 'roberta-base', 'distilbert-base-cased', 'distilroberta-base']),
             freeze_transformer = choices([True, False]),
             add_word_embs = choices([True, False]),
             add_amb_embs = choices([True, False]),
             add_amb_feat = choices([True, False])
-        ))
-        return hp_space
-    hp_space = {
-        '1': hp_space_1
-    }[cmd_args.hpspace]
+            )
+    }
+    hp_space = lambda _: hp_spaces[cmd_args.hp_space]
     is_grid = not cmd_args.hyperopt
     return hp_space, is_grid

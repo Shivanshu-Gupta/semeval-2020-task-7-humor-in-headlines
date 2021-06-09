@@ -1,9 +1,14 @@
+from argparse import ArgumentParser
+from dataclasses import dataclass
 import json
 import attr
 from typing import Union, Optional
 
+from transformers import TrainingArguments
+
 from param_impl import Parameters
 
+inputs_dir = '../inputs/'
 outputs_dir = '../outputs/'
 
 def disambiguate(o, t):
@@ -41,6 +46,29 @@ class MetricParams(Parameters):
     def __attrs_post_init__(self):
         self.mode = self.direction[:3]
 
+@dataclass
+class TaskArguments(TrainingArguments):
+    search_name: str = ''
+    @classmethod
+    def setup_parser(cls, parser: ArgumentParser):
+        fields = cls.__dataclass_fields__
+        for k in cls.__annotations__:
+            if k == 'model_id':
+                continue
+            f = fields[k]
+            if f.type == bool:
+                parser.add_argument(f'--{k}', action='store_true')
+            else:
+                parser.add_argument(f'--{k}', type=f.type, default=f.default)
+
+    @classmethod
+    def parse_args(cls, cmd_args):
+        # return {k: getattr(cmd_args, k)
+        #         for k in cls.__annotations__
+        #         if k != 'model_id'}
+        return {k: v for k, v in cmd_args.__dict__.items()
+                if k in cls.__annotations__ and k != 'model_id'}
+
 def get_training_args_dict(cmd_args):
     training_args_dict = DefaultTrainingArguments().to_dict()
     training_args_dict.update(dict(
@@ -49,4 +77,7 @@ def get_training_args_dict(cmd_args):
     ))
     if cmd_args.num_epochs > 0:
         training_args_dict['num_train_epochs'] = cmd_args.num_epochs
+    for attr in ['learning_rate', 'weight_decay']:
+        if hasattr(cmd_args, attr):
+            training_args_dict[attr] = getattr(cmd_args, attr)
     return training_args_dict
