@@ -5,13 +5,31 @@ from dataclasses import dataclass
 from ray import tune
 
 from params import TaskArguments, get_training_args_dict, outputs_dir
-from task1.params import Task1Arguments
 
 @dataclass
-class Task2Model0Arguments(Task1Arguments):
-    model_id: int = 0
+class Task2Model0Arguments(TaskArguments):
+    model_id: int = 0   # asdasdasd
+    checkpoint_path: str = None
+
+    # Arguments for Task 1 Regression Model
+    transformer: str = 'bert-base-cased'    # bert-{base, large}-cased, roberta-{base, large}, distilbert-base-cased, distilroberta-base
+    freeze_transformer: bool = True
+    add_word_embs: bool = False
+    add_amb_embs: bool = False
+    add_amb_feat: bool = False
+
     def model_name(self):
-        return f'model0_{super().model_name()}'
+        name_parts = [self.transformer]
+        if self.freeze_transformer:
+            name_parts += ['frozen']
+        if self.add_word_embs:
+            name_parts += ['word-emb']
+        if self.add_amb_embs:
+            name_parts += ['amb-emb']
+        if self.add_amb_feat:
+            name_parts += ['amb-feat']
+        name = '_'.join(name_parts)
+        return name
 
 @dataclass
 class Task2Model1Arguments(TaskArguments):

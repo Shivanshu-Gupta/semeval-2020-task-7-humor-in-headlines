@@ -40,7 +40,8 @@ def get_preprocess_ds(glove=None, synset_sizes=None, amb_feat=False, idx=''):
         hl_fin = prefix + word_fin + suffix
         hl_w_mod = prefix + f'[{word_ini} | {word_fin}]' + suffix
         d = {
-            f'hl_ini': hl_ini,
+            'hl_ini': hl_ini,
+            f'hl_ini{idx}': hl_ini,
             f'hl_fin{idx}': hl_fin,
             f'word_ini{idx}': word_ini,
             f'hl_w_mod{idx}': hl_w_mod,
@@ -49,8 +50,8 @@ def get_preprocess_ds(glove=None, synset_sizes=None, amb_feat=False, idx=''):
             words = [word_ini, word_fin]
             word_embs = glove.get_vecs_by_tokens(words, lower_case_backup=True)
             d.update({
-                f'word_ini{idx}_emb': word_embs[0].numpy(),
-                f'word_fin{idx}_emb': word_embs[1].numpy()
+                f'word_ini_emb{idx}': word_embs[0].numpy(),
+                f'word_fin_emb{idx}': word_embs[1].numpy()
             })
         if amb_feat:
             assert synset_sizes is not None
@@ -79,6 +80,7 @@ def get_preprocess_ds(glove=None, synset_sizes=None, amb_feat=False, idx=''):
                     f'amb_emb_{pref}{idx}': amb_emb,
                     f'amb_mask_{pref}{idx}': amb_mask,
                 })
+        if idx: d.pop(f'hl_ini{idx}')
         return d
 
     return preprocess_ds

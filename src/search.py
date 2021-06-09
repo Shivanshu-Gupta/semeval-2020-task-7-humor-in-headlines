@@ -19,16 +19,9 @@ from util import get_common_argparser, print_ds_stats, output as print
 from params import inputs_dir, outputs_dir, MetricParams
 from comet_upload import upload_confusion_matrices
 
-# os.environ['COMET_LOGGING_FILE']='comet.log'
-# os.environ['COMET_LOGGING_FILE_LEVEL']='debug'
-# os.environ['COMET_LOGGING_CONSOLE']='info'
-os.environ['COMET_DISABLE_AUTO_LOGGING']='1'    # temporarily to prevent: ImportError: You must import Comet before these modules: torch
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
-os.environ['COMET_MODE'] = 'ONLINE'
-# os.environ['COMET_MODE'] = 'OFFLINE'
-# os.environ['COMET_OFFLINE_DIRECTORY'] = 'comet/'
-
-os.environ['TUNE_MAX_PENDING_TRIALS_PG'] = '16'
+os.environ['COMET_DISABLE_AUTO_LOGGING']='1'    # to prevent: ImportError: You must import Comet before these modules: torch
+os.environ['TUNE_MAX_PENDING_TRIALS_PG'] = '16' # to prevent ray from filling up filling up disk space
 
 class CometCallback(TrainerCallback):
     def on_train_begin(self, args, state, control, **kwargs):
@@ -64,7 +57,7 @@ def train(config, task_id, args, comet=False, checkpoint_dir=None):
 
 def main(cmd_args):
     task_id = cmd_args.task
-    os.environ['COMET_PROJECT_NAME'] = f'humor-{task_id}'
+    if cmd_args.comet: setup_comet(task_id=task_id)
     ray.init(dashboard_host='0.0.0.0', _temp_dir='/srv/ssd0/ucinlp/shivag5/tmp/ray')
     search_args = dict(
         search=True,
@@ -173,3 +166,14 @@ if __name__ == '__main__':
 # cmd_args.overwrite=True
 # cmd_args.gpus_per_trial=1
 # cmd_args.num_epochs=2
+
+
+kwargs = dict(
+    transformer='roberta-base',
+    freeze_transformer=False,
+    word_emb_dim=0,
+    amb_emb_dim=0,
+    amb_feat_dim=0
+)
+checkpoint_path = '../outputs/models/task-1/roberta-base/checkpoint-456/pytorch_model.bin'
+model = GradeComparisonModel(checkpoint_path, **kwargs)

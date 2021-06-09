@@ -9,7 +9,7 @@ from transformers import set_seed
 import task1.params
 import task2.params
 from params import inputs_dir
-from util import get_common_argparser, print_ds_stats, output as print
+from util import get_common_argparser, print_ds_stats, setup_comet, output as print
 
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
@@ -30,22 +30,28 @@ def main(cmd_args, task_id, args, model_id=None):
 
     if task_id != 2 or model_id != 0:   # Task 2 Model 0 simply compares grades predicted by a trained task 1 model
         trainer.train()
-        # eval_metrics = trainer.evaluate()
-        eval_preds, eval_labels, eval_metrics = trainer.predict(ds['validation'], metric_key_prefix='eval')
-        print(eval_metrics)
 
+    # eval_metrics = trainer.evaluate()
+    eval_preds, eval_labels, eval_metrics = trainer.predict(ds['validation'], metric_key_prefix='eval')
+    print(eval_metrics)
 
-        if task_id == 2:    # confusion matrix in task 2's compute_metrics needs index_to_example_function
-            from task2.setup import get_compute_metrics
-            trainer.compute_metrics = get_compute_metrics(tokenizer=tokenizer, ds=ds, split='test')
+    if task_id == 2:    # confusion matrix in task 2's compute_metrics needs index_to_example_function
+        from task2.setup import get_compute_metrics
+        trainer.compute_metrics = get_compute_metrics(tokenizer=tokenizer, ds=ds, split='test')
 
-        test_preds, test_labels, test_metrics = trainer.predict(ds['test'], metric_key_prefix='test')
-        print(test_metrics)
-    else:
-        pass
+    test_preds, test_labels, test_metrics = trainer.predict(ds['test'], metric_key_prefix='test')
+    print(test_metrics)
+
+    if task_id == 2:    # task 2 models give logits
+        eval_preds = eval_preds.argmax(-1) + 1
+        test_preds = test_preds.argmax(-1) + 1
+
     if cmd_args.write_preds:
         from params import outputs_dir
-        output_dir = os.path.join(outputs_dir, f'output/task-{task_id}/{args.model_name()}')
+        if task_id == 1:
+            output_dir = os.path.join(outputs_dir, f'output/task-{task_id}/{args.model_name()}')
+        else:
+            output_dir = os.path.join(outputs_dir, f'output/task-{task_id}/model-{model_id}/{args.model_name()}')
         os.makedirs(output_dir, exist_ok=True)
         write_pred_file(task_id, ds['validation'], eval_preds, os.path.join(output_dir, 'dev-preds.csv'))
         write_pred_file(task_id, ds['test'], test_preds, os.path.join(output_dir, 'test-preds.csv'))
@@ -75,9 +81,7 @@ if __name__ == '__main__':
         gpu = cmd_args.gpu_idx
         os.environ['CUDA_VISIBLE_DEVICES'] = str(gpu) if gpu >= 0 else ''
 
-    if cmd_args.comet:
-        os.environ['COMET_PROJECT_NAME'] = f'humor-{task_id}'
-        os.environ['COMET_MODE'] = 'ONLINE'
+    if cmd_args.comet: setup_comet(task_id=task_id)
 
     if task_id == 1:
         from task1.params import get_args

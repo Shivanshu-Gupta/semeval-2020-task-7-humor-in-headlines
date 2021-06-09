@@ -1,3 +1,4 @@
+import os
 import argparse
 from pprint import PrettyPrinter
 from datasets.dataset_dict import DatasetDict
@@ -29,6 +30,19 @@ def get_common_argparser():
     parser.add_argument('--comet', action='store_true')
     parser.add_argument('--num_epochs', type=int, default=1)
     return parser
+
+def setup_comet(task_id):
+    os.environ['COMET_PROJECT_NAME'] = f'humor-{task_id}'
+    os.environ['COMET_MODE'] = 'ONLINE'
+
+    # to run in offline mode
+    # os.environ['COMET_MODE'] = 'OFFLINE'
+    # os.environ['COMET_OFFLINE_DIRECTORY'] = 'comet/'
+
+    # for additional comet debugging
+    # os.environ['COMET_LOGGING_FILE']='comet.log'
+    # os.environ['COMET_LOGGING_FILE_LEVEL']='debug'
+
 
 def create_object_from_class_string(module_name, class_name, parameters):
     import importlib

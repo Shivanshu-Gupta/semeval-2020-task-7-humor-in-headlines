@@ -7,7 +7,7 @@ from datasets.dataset_dict import DatasetDict
 from transformers import AutoModelForSequenceClassification, AutoModelForSeq2SeqLM, AutoTokenizer, Trainer, EvalPrediction
 
 from task2.data import get_dataset
-from task2.models import GradeComparisonModel
+from task2.models import GradeComparisonDataCollator, GradeComparisonModel
 from params import MetricParams
 from util import output as print
 
@@ -35,20 +35,23 @@ def get_compute_metrics(tokenizer, ds, split='validation'):
 def get_model_init(args, ds: DatasetDict=None):
     model_id = args.model_id
     if model_id == 0:
-        word_emb_dim = ds['train'][0]['word_ini_emb'].shape[0] if args.add_word_emb else 0
-        amb_emb_dim = ds['train'][0]['amb_emb_ini'].shape[0] if args.add_word_emb else 0
+        word_emb_dim = ds['train'][0]['word_ini_emb1'].shape[0] if args.add_word_embs else 0
+        amb_emb_dim = ds['train'][0]['amb_emb_ini1'].shape[0] if args.add_amb_embs else 0
+        amb_feat_dim = ds['train'][0]['amb_feat_ini1'].shape[0] if args.add_amb_feat else 0
         def model_init(trial):
             if trial is None: trial = asdict(args)  # required because Trainer seems to call model_init() in its constructor without arguments
-            return GradeComparisonModel(checkpoint_path=None,
-                                        transformer=trial['transformer'],
-                                        freeze_transformer=trial['freeze_transformer'],
-                                        word_emb_dim=word_emb_dim,
-                                        amb_emb_dim=amb_emb_dim)
+            return GradeComparisonModel(
+                checkpoint_path=args.checkpoint_path,
+                transformer=trial['transformer'],
+                freeze_transformer=trial['freeze_transformer'],
+                word_emb_dim=word_emb_dim,
+                amb_emb_dim=amb_emb_dim,
+                amb_feat_dim=amb_feat_dim)
     elif model_id == 1:
         def model_init(trial):
             if trial is None: trial = asdict(args)
-            return AutoModelForSequenceClassification.from_pretrained(trial['transformer'],
-                                                                      num_labels=2)
+            return AutoModelForSequenceClassification.from_pretrained(
+                trial['transformer'], num_labels=2)
             # return Model1(trial['transformer'])
     elif model_id == 2:
         def model_init(trial):
@@ -69,6 +72,8 @@ def setup(args, data_dir=''):
         tokenizer=tokenizer,
         compute_metrics=compute_metrics
     )
+    if model_id == 0:
+        trainer_args['data_collator'] = GradeComparisonDataCollator(tokenizer)
     metric = MetricParams(name='accuracy', direction='maximize')
 
     # use model init even if not doing hyperparameter_search for reproducibility

@@ -16,12 +16,13 @@ import numpy as np
 
 def score_task_2(truth_loc, prediction_loc):
     truth = pd.read_csv(truth_loc, usecols=['id','label'])
+    truth = truth[truth.label != 0]
     pred = pd.read_csv(prediction_loc, usecols=['id','pred'])
     
     assert(sorted(truth.id) == sorted(pred.id)),"ID mismatch between ground truth and prediction!"
     
     data = pd.merge(truth,pred)
-    data = data[data.label != 0]
+    # data = data[data.label != 0]
     accuracy = np.sum(data.label == data.pred)*1.0/len(data)
     
     print("Accuracy = %.3f" % accuracy)

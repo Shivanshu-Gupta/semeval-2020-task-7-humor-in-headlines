@@ -34,7 +34,7 @@ def get_encode(tokenizer, model_id=0):
 
 # original1, edit1, original2, edit2 -> combined, hl_old1, hl_new1, hl_w_mod1, word_old1, word_new1, hl_old2, hl_new2, hl_w_mod2, word_old2, word_new2
 def get_dataset(tokenizer, model_id=0, args=None, output_all_cols=False, data_dir=''):
-    ds_path = os.path.join(data_dir, f'preprocessed/task2/model{model_id}', args.transformer)
+    ds_path = os.path.join(data_dir, f'task2/preprocessed_data/model{model_id}', args.transformer)
     print(f'Dataset path: {ds_path}')
     try:
         encoded_ds = DatasetDict.load_from_disk(ds_path)
@@ -45,7 +45,7 @@ def get_dataset(tokenizer, model_id=0, args=None, output_all_cols=False, data_di
         if model_id == 0:
             glove = torchtext.vocab.GloVe(name='840B', dim=300,
                                           cache=os.path.join(os.environ['HOME'], '.vector_cache'))
-            synset_sizes = get_synsets_sizes(ds)
+            synset_sizes = get_synsets_sizes(ds, task=2)
 
         for i in range(2):
             ds = ds.rename_column(f'edit{i+1}', f'word_fin{i+1}')
